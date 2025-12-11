@@ -1,2 +1,2 @@
-import { createUser, getUserById, getUserByEmail } from "./src/services/auth";
+import { createUser, getUserById, getUserByEmail } from "./src/services/auth.ts";
 export { createUser, getUserByEmail, getUserById };

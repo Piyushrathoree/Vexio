@@ -1,15 +1,15 @@
 import type { Request, Response } from "express";
-import { ExistingUser, NewUser } from "../schema/user.schema";
+import { ExistingUser, NewUser } from "../schema/user.schema.ts";
 import { createUser, getUserByEmail, getUserById } from "@repo/db";
-import { ApiError } from "../utils/ApiError";
-import { comparePassword, hashPassword } from "../utils/hash";
-import { ApiResponse } from "../utils/ApiResponse";
-import { generateToken } from "../utils/jwt";
+import { ApiError } from "../utils/ApiError.ts";
+import { comparePassword, hashPassword } from "../utils/hash.ts";
+import { ApiResponse } from "../utils/ApiResponse.ts";
+import { generateToken } from "../utils/jwt.ts";
 
 const Register = async (req: Request, res: Response) => {
     const result = NewUser.safeParse(req.body);
     if (!result.success) {
-        throw new ApiError(400, `${result.error}`);
+        throw new ApiError(400, `${result.error.message}`);
     }
     const { name, email, password } = result.data;
     try {
@@ -17,8 +17,10 @@ const Register = async (req: Request, res: Response) => {
         if (existingUser) {
             throw new ApiError(400, "User already exists please log in");
         }
-        const hashedPass = await hashPassword(password);
-        const user = await createUser(email, name, hashedPass);
+
+        let hashedPass = await hashPassword(password);
+        
+        const user = await createUser(name, email, hashedPass.toString());
         if (!user) {
             throw new ApiError(400, "user not created ");
         }
@@ -37,13 +39,12 @@ const Register = async (req: Request, res: Response) => {
     }
 };
 
-
-const signIn = async (req:Request , res:Response)=>{
-    const result = ExistingUser.safeParse(req.body)
-    if (!result.success){
-        throw new ApiError(404 , "please recheck your credentials")
+const signIn = async (req: Request, res: Response) => {
+    const result = ExistingUser.safeParse(req.body);
+    if (!result.success) {
+        throw new ApiError(404, "please recheck your credentials");
     }
-    const {email , password} = result.data
+    const { email, password } = result.data;
     try {
         const user = await getUserByEmail(email);
         if (!user) {
@@ -65,4 +66,6 @@ const signIn = async (req:Request , res:Response)=>{
     } catch (error) {
         throw new ApiError(500, `${error}`);
     }
-}
+};
+
+export { signIn, Register };

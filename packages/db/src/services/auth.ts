@@ -1,4 +1,4 @@
-import { client } from "..";
+import { client } from "../index.ts";
 
 export const createUser = async (
     name: string,
