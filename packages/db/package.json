@@ -1,0 +1,16 @@
+{
+  "name": "@repo/db",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@prisma/client": "^7.1.0",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "prisma": "^7.1.0"
+  }
+}

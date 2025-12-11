@@ -1,0 +1,30 @@
+{
+  "name": "http-server",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "nodemon index.ts --watch ",
+    "build": "bun build --compile",
+    "start": "bun start"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/nodemon": "^3.1.1",
+    "nodemon": "^3.1.11"
+  },
+  "dependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/express": "^5.0.6",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "prisma": "^7.1.0",
+    "ts-node": "^10.9.2",
+    "zod": "^4.1.13"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
