@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@repo/typescript-config": "*",
+    "@types/jsonwebtoken": "^9.0.10",
+    "jsonwebtoken": "^9.0.3",
     "ws": "^8.18.3"
   },
   "peerDependencies": {

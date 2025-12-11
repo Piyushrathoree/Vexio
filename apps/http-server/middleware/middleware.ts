@@ -1,9 +1,9 @@
 import type { Request, NextFunction } from "express";
 import { ApiError } from "../utils/ApiError";
 import { verifyToken } from "../utils/jwt";
-import { getUserById } from "@repo/db";
 import type { JwtPayload } from "jsonwebtoken";
-import type { User } from "@repo/db/src/generated/prisma/client";
+
+type User = Record<string, unknown>;
 
 declare global {
     namespace Express {
