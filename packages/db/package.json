@@ -3,14 +3,25 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "generate": "bun x prisma generate",
+    "reset": "bun prisma migrate reset",
+    "migrate": "bun prisma migrate dev",
+    "db:deploy": "bun prisma migrate deploy && bun run generate"
+  },
   "devDependencies": {
     "@prisma/client": "^7.1.0",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/pg": "^8.16.0",
+    "@types/dotenv": "^8.2.3",
+    "dotenv": "^17.2.3"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.1.0",
+    "pg": "^8.16.3",
     "prisma": "^7.1.0"
   }
 }

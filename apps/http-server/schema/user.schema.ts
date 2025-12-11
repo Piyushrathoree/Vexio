@@ -1,7 +1,7 @@
 import * as z from "zod";
 
 const NewUser = z.object({
-  fullName: z.string().max(20).optional(),
+  name: z.string().max(20),
   email: z.email(),
   password: z
     .string()
