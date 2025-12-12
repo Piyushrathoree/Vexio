@@ -34,3 +34,10 @@ yarn-error.log*
 
 # ui
 dist/
+
+
+.vscode
+.vscode/*
+
+Packages/db/src/generated
+Packages/db/src/generated/*
