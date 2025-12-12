@@ -14,10 +14,30 @@ datasource db {
 }
 
 model User {
-  id       Int    @unique @default(autoincrement())
+  id       String @id @unique @default(uuid())
   name     String
   email    String @unique
   password String
+  rooms    Room[] // one user can join multiple rooms 
+  chats    Chat[] // one user can have multiple chats 
 
   @@index([id])
+}
+
+model Room {
+  id        Int      @id @unique @default(autoincrement())
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  adminId   String
+  admin     User     @relation(fields: [adminId], references: [id])
+  chats     Chat[] // one room will have multiple chats 
+}
+
+model Chat {
+  id       Int    @id @unique @default(autoincrement())
+  messages String
+  roomId   Int
+  room     Room   @relation(fields: [roomId], references: [id])
+  userId   String
+  user     User   @relation(fields: [userId], references: [id])
 }

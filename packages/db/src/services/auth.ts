@@ -6,7 +6,7 @@ export const createUser = async (
     hashPassword: string
 ) => {
     return client.user.create({
-        data: { name, email, password: hashPassword },
+        data: { email, name, password: hashPassword },
     });
 };
 
@@ -14,8 +14,10 @@ export const getUserByEmail = async (email: string) => {
     return client.user.findUnique({ where: { email } });
 };
 
-export const getUserById = async(id : number) =>{
-    return client.user.findUnique({where:{
-        id
-    }})
-}
+export const getUserById = async (id: string) => {
+    return client.user.findUnique({
+        where: {
+            id,
+        },
+    });
+};

@@ -19,12 +19,12 @@ const Register = async (req: Request, res: Response) => {
         }
 
         let hashedPass = await hashPassword(password);
-        
+
         const user = await createUser(name, email, hashedPass.toString());
         if (!user) {
             throw new ApiError(400, "user not created ");
         }
-        const token = generateToken(email);
+        const token = generateToken({ userId: user.id, email });
         return res
             .status(201)
             .json(
@@ -54,7 +54,7 @@ const signIn = async (req: Request, res: Response) => {
         if (!decodePass) {
             throw new ApiError(401, "your credentials are incorrect");
         }
-        const token = generateToken(email);
+        const token = generateToken({ userId: user.id, email });
 
         res.status(200).json(
             new ApiResponse(
@@ -67,5 +67,19 @@ const signIn = async (req: Request, res: Response) => {
         throw new ApiError(500, `${error}`);
     }
 };
+
+
+const CreateRoom = async(req:Request , res: Response)=>{
+    const userId = req.user?.userId
+    if (!userId){
+        throw new ApiError(401 , "unauthorized")
+    }
+    const {slug} = req.body
+    if (!slug){
+        throw new ApiError(400 , "you must have a Slug")
+    }
+    
+
+}
 
 export { signIn, Register };

@@ -1,6 +1,9 @@
 # dependencies (bun install)
 node_modules
-
+./src/generated/*
+./src/generated
+.vscode
+.vscode/*
 # output
 out
 dist

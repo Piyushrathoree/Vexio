@@ -1,6 +1,6 @@
-import type { Request, NextFunction } from "express";
-import { ApiError } from "../utils/ApiError";
-import { verifyToken } from "../utils/jwt";
+import type { Request, Response, NextFunction } from "express";
+import { ApiError } from "../utils/ApiError.ts";
+import { verifyToken } from "../utils/jwt.ts";
 import type { JwtPayload } from "jsonwebtoken";
 
 type User = Record<string, unknown>;
@@ -12,9 +12,15 @@ declare global {
         }
     }
 }
-const isAuthenticated = async (req: Request, next: NextFunction) => {
+const isAuthenticated = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
     try {
+        
         const token = req.headers.authorization?.split(" ")[1];
+        console.log(token); 
         if (!token) {
             throw new ApiError(401, "unauthorized");
         }
@@ -22,6 +28,11 @@ const isAuthenticated = async (req: Request, next: NextFunction) => {
         if (!decoded) {
             throw new ApiError(401, "unauthorized");
         }
+        console.log("---------------------------------------");
+        console.log(decoded)
+        console.log("---------------------------------------");
+        ;
+        
         if (typeof decoded === "object" && decoded !== null) {
             req.user = decoded as User;
         } else {
