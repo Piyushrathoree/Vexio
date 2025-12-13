@@ -9,7 +9,7 @@ app.get("/", (req, res) => {
     console.log("hello your application is working fine");
     res.status(200).json({ msg: "working fine" });
 });
-app.use("/api/v1/auth", router);
+app.use("/api/v1/", router);
 
 app.listen("8000", () => {
     console.log("http-server is running at port 8000");

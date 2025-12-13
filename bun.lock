@@ -13,6 +13,7 @@
     "apps/http-server": {
       "name": "http-server",
       "dependencies": {
+        "@repo/common": "*",
         "@repo/db": "*",
         "@repo/typescript-config": "*",
         "@types/express": "^5.0.6",
@@ -62,6 +63,7 @@
       "name": "ws-server",
       "dependencies": {
         "@repo/common": "*",
+        "@repo/db": "*",
         "@repo/typescript-config": "*",
         "ws": "^8.18.3",
       },
@@ -96,6 +98,7 @@
       "dependencies": {
         "@prisma/adapter-pg": "^7.1.0",
         "@prisma/client-runtime-utils": "^7.1.0",
+        "@repo/common": "*",
         "pg": "^8.16.3",
         "prisma": "^7.1.0",
       },

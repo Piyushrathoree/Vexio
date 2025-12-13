@@ -41,3 +41,4 @@ model Chat {
   userId   String
   user     User   @relation(fields: [userId], references: [id])
 }
+  

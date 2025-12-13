@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { ExistingUser, NewUser } from "../schema/user.schema.ts";
-import { createRoom, createUser, getUserByEmail, getUserById } from "@repo/db";
+import { createRoom, createUser, getUserByEmail, getUserById , getAllRooms} from "@repo/db";
 import { ApiError } from "../../../packages/common/utils/ApiError.ts";
 import { comparePassword, hashPassword } from "../utils/hash.ts";
 import { ApiResponse } from "../../../packages/common/utils/ApiResponse.ts";
@@ -50,12 +50,14 @@ const signIn = async (req: Request, res: Response) => {
         if (!user) {
             throw new ApiError(400, "user not found ! please sign up");
         }
+
         const decodePass = comparePassword(password, user.password);
         if (!decodePass) {
             throw new ApiError(401, "your credentials are incorrect");
         }
         const token = generateToken({ userId: user.id, email });
-
+        console.log(token);
+        
         res.status(200).json(
             new ApiResponse(
                 200,
@@ -90,6 +92,15 @@ const CreateRoom = async (req: Request, res: Response) => {
     }
 };
 
+const getAllRoom = async (req: Request, res: Response) => {
+    try {
+        const rooms = await getAllRooms();
+        res.status(200).json(
+            new ApiResponse(200, { rooms }, "rooms fetched successfully ")
+        );
+    } catch (error) {
+        throw new ApiError(500, `${error}`);
+    }
+}
 
-
-export { signIn, Register, CreateRoom };
+export { signIn, Register, CreateRoom , getAllRoom};

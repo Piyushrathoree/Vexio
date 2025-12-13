@@ -15,8 +15,11 @@ const getRoomByAdminId = async (adminId: string) => {
 const updateRoom = async (id: number, memberId: string) => {
     return client.room.update({
         where: { id },
-        data: { members: { connect: { id: memberId } } },
+        data: { members: { push: memberId } },
     });
 };
-
-export { createRoom, getRoomById, getRoomByAdminId, updateRoom };
+//debuging function 
+const getAllRooms = async () => {
+    return client.room.findMany();
+};
+export { createRoom, getRoomById, getRoomByAdminId, updateRoom , getAllRooms};

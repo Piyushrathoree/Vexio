@@ -1,4 +1,6 @@
+import { createChat } from "@repo/db";
 import type { User } from "..";
+
 
 /***
     type = import("@types/ws").default   // Bun's version
@@ -35,15 +37,24 @@ const leaveRoom = (
     }
 };
 
-const broadcastMessage = (
-    userId: string,
+const broadcastToRoom = async(
+    roomId: number,
     message: string,
     Users: Map<string, User>
 ) => {
-    const user = Users.get(userId);
-    if (user) {
-        user.ws.send(message);
-    }
+    Users.forEach((user) => {
+        if (user.rooms.has(roomId)) {
+            try {
+                // Only send if socket is open (readyState === 1)
+                if (user.ws.readyState === 1) {
+                    user.ws.send(message);
+                }
+            } catch (err) {
+                // Ignore send errors (socket might have closed)
+                console.error(`Failed to send to user ${user.userId}:`, err);
+            }
+        }
+    });
 };
 
 //removing the whole user from the map
@@ -51,4 +62,4 @@ const removeUser = (userId: string, Users: Map<string, User>) => {
     Users.delete(userId);
 };
 
-export { addUser, joinRoom, leaveRoom, broadcastMessage, removeUser };
+export { addUser, joinRoom, leaveRoom, broadcastToRoom, removeUser };

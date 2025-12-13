@@ -18,6 +18,7 @@
     "dependencies": {
         "@repo/typescript-config": "*",
         "@repo/common": "*",
+        "@repo/db":"*",
         "ws": "^8.18.3"
     },
     "peerDependencies": {
