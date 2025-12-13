@@ -3,7 +3,7 @@ import {
     CreateRoom,
     Register,
     signIn,
-} from "../controllers/user.controller.ts";
+} from "../controllers/index.ts";
 import isAuthenticated from "../middleware/middleware.ts";
 
 const router: Router = Router();
