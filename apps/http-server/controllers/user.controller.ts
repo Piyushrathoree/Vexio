@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
 import { ExistingUser, NewUser } from "../schema/user.schema.ts";
-import { createUser, getUserByEmail, getUserById } from "@repo/db";
-import { ApiError } from "../utils/ApiError.ts";
+import { createRoom, createUser, getUserByEmail, getUserById } from "@repo/db";
+import { ApiError } from "../../../packages/common/utils/ApiError.ts";
 import { comparePassword, hashPassword } from "../utils/hash.ts";
-import { ApiResponse } from "../utils/ApiResponse.ts";
+import { ApiResponse } from "../../../packages/common/utils/ApiResponse.ts";
 import { generateToken } from "../utils/jwt.ts";
 
 const Register = async (req: Request, res: Response) => {
@@ -68,18 +68,26 @@ const signIn = async (req: Request, res: Response) => {
     }
 };
 
-
-const CreateRoom = async(req:Request , res: Response)=>{
-    const userId = req.user?.userId
-    if (!userId){
-        throw new ApiError(401 , "unauthorized")
+const CreateRoom = async (req: Request, res: Response) => {
+    const userId = req.user?.userId;
+    if (!userId || typeof userId !== "string") {
+        throw new ApiError(401, "unauthorized");
     }
-    const {slug} = req.body
-    if (!slug){
-        throw new ApiError(400 , "you must have a Slug")
+    const { slug } = req.body;
+    if (!slug || typeof slug !== "string") {
+        throw new ApiError(400, "you must have a Slug");
     }
-    
+    try {
+        const room = await createRoom(slug, userId);
+        if (!room) {
+            throw new ApiError(400, "Room not created ");
+        }
+        res.status(201).json(
+            new ApiResponse(200, { room }, "new room created successfully ")
+        );
+    } catch (error) {
+        throw new ApiError(500, `${error}`);
+    }
+};
 
-}
-
-export { signIn, Register };
+export { signIn, Register, CreateRoom };
