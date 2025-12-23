@@ -1,9 +1,8 @@
 import type { Request, Response } from "express";
 import { ExistingUser, NewUser } from "../schema/user.schema.ts";
-import { createRoom, createUser, getUserByEmail, getUserById , getAllRooms} from "@repo/db";
-import { ApiError } from "../../../packages/common/utils/ApiError.ts";
+import { createRoom, createUser, getUserByEmail, getUserById, getAllRooms } from "@repo/db";
+import { ApiError, ApiResponse } from "@repo/common";
 import { comparePassword, hashPassword } from "../utils/hash.ts";
-import { ApiResponse } from "../../../packages/common/utils/ApiResponse.ts";
 import { generateToken } from "../utils/jwt.ts";
 
 const Register = async (req: Request, res: Response) => {
@@ -57,7 +56,7 @@ const signIn = async (req: Request, res: Response) => {
         }
         const token = generateToken({ userId: user.id, email });
         console.log(token);
-        
+
         res.status(200).json(
             new ApiResponse(
                 200,
@@ -103,4 +102,4 @@ const getAllRoom = async (req: Request, res: Response) => {
     }
 }
 
-export { signIn, Register, CreateRoom , getAllRoom};
+export { signIn, Register, CreateRoom, getAllRoom };
