@@ -14,7 +14,7 @@
         "db:deploy": "bun prisma migrate deploy && bun run generate"
     },
     "devDependencies": {
-        "@prisma/client": "^7.1.0",
+        "@prisma/client": "^7.2.0",
         "@types/bun": "latest",
         "@types/pg": "^8.16.0",
         "@types/dotenv": "^8.2.3",
@@ -26,8 +26,8 @@
     "dependencies": {
         "@prisma/adapter-pg": "^7.1.0",
         "@prisma/client-runtime-utils": "^7.1.0",
+        "@repo/common": "*",
         "pg": "^8.16.3",
-        "prisma": "^7.1.0",
-        "@repo/common":"*"
+        "prisma": "^7.2.0"
     }
 }

@@ -4,7 +4,7 @@
     "type": "module",
     "private": true,
     "scripts": {
-        "dev": "nodemon index.ts",
+        "dev": "bun --hot index.ts",
         "build": "bun build --compile",
         "start": "bun start"
     },
