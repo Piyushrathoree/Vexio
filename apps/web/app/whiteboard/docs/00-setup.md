@@ -39,9 +39,16 @@ app/whiteboard/
 
 ```tsx
 import { redirect } from 'next/navigation';
-
-export default function WhiteboardIndexPage() {
-  redirect('/whiteboard/1');
+export default async function WhiteboardIndexPage() {
+  // Call your HTTP server to create a new room
+  const response = await fetch('http://localhost:8000/api/v1/room', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  
+  const { roomId } = await response.json();
+  
+  redirect(`/whiteboard/${roomId}`);
 }
 ```
 
