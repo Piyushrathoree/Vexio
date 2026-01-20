@@ -6,10 +6,7 @@ Every element on the whiteboard is stored as a JavaScript object. The canvas jus
 
 ```typescript
 /**
- * WHITEBOARD TYPES
- * 
- * The "data model" - all elements are stored as objects,
- * and the canvas renders them.
+ * ENHANCED WHITEBOARD TYPES
  */
 
 // ============================================
@@ -17,122 +14,152 @@ Every element on the whiteboard is stored as a JavaScript object. The canvas jus
 // ============================================
 
 export type Tool = 
-  | 'select'    // Click to select, drag to move
-  | 'hand'      // Pan the canvas
-  | 'pen'       // Freehand drawing
-  | 'eraser'    // Click to delete
-  | 'rectangle' // Draw rectangles
-  | 'ellipse'   // Draw ellipses
-  | 'line'      // Draw lines
-  | 'arrow'     // Draw arrows
-  | 'text';     // Add text
+  | 'select' | 'hand' | 'pen' | 'eraser'
+  | 'rectangle' | 'ellipse' | 'circle' | 'diamond'
+  | 'line' | 'arrow' | 'text' | 'sticky';
 
 // ============================================
-// ELEMENT TYPES
+// BASE ELEMENT
 // ============================================
 
-// Base properties all elements share
 export interface BaseElement {
-  id: string;           // Unique identifier
-  type: string;         // Element type
-  x: number;            // X position
-  y: number;            // Y position
-  zIndex: number;       // Layer order
-  stroke: string;       // Stroke color
-  strokeWidth: number;  // Stroke thickness
-  fill: string;         // Fill color
-  opacity: number;      // 0-1
-  roughness: number;    // 0 = smooth, 1+ = sketchy
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  zIndex: number;
+  stroke: string;
+  strokeWidth: number;
+  fill: string;
+  opacity: number;
+  roughness: number;
+  locked?: boolean;
+  rotation?: number;
 }
 
-// Freehand path (pen tool)
-export interface PathElement extends BaseElement {
-  type: 'path';
-  points: { x: number; y: number }[];
-}
+// ============================================
+// SHAPES
+// ============================================
 
-// Rectangle
 export interface RectangleElement extends BaseElement {
   type: 'rectangle';
   width: number;
   height: number;
+  borderRadius?: number;
 }
 
-// Ellipse
 export interface EllipseElement extends BaseElement {
   type: 'ellipse';
   width: number;
   height: number;
 }
 
-// Line
+export interface CircleElement extends BaseElement {
+  type: 'circle';
+  radius: number;  // x,y is CENTER
+}
+
+export interface DiamondElement extends BaseElement {
+  type: 'diamond';
+  width: number;
+  height: number;
+}
+
+// ============================================
+// LINES & ARROWS
+// ============================================
+
 export interface LineElement extends BaseElement {
   type: 'line';
   endX: number;
   endY: number;
+  startBinding?: Binding;
+  endBinding?: Binding;
 }
 
-// Arrow
 export interface ArrowElement extends BaseElement {
   type: 'arrow';
   endX: number;
   endY: number;
+  arrowHeadStart?: ArrowHead;
+  arrowHeadEnd?: ArrowHead;
+  startBinding?: Binding;
+  endBinding?: Binding;
 }
 
-// Text
+export type ArrowHead = 'none' | 'arrow' | 'dot' | 'bar' | 'triangle';
+
+export interface Binding {
+  elementId: string;
+  position: number;  // 0-1
+  gap: number;
+}
+
+// ============================================
+// TEXT & STICKY
+// ============================================
+
+export interface PathElement extends BaseElement {
+  type: 'path';
+  points: { x: number; y: number }[];
+  smoothing?: number;
+}
+
 export interface TextElement extends BaseElement {
   type: 'text';
   text: string;
   fontSize: number;
   fontFamily: string;
+  textAlign?: 'left' | 'center' | 'right';
 }
 
-// Union of all element types
-export type WhiteboardElement = 
-  | PathElement 
-  | RectangleElement 
-  | EllipseElement 
-  | LineElement 
-  | ArrowElement
-  | TextElement;
+export interface StickyElement extends BaseElement {
+  type: 'sticky';
+  width: number;
+  height: number;
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+}
 
 // ============================================
-// CAMERA
+// UNION & HELPERS
 // ============================================
+
+export type WhiteboardElement = 
+  | PathElement | RectangleElement | EllipseElement
+  | CircleElement | DiamondElement | LineElement
+  | ArrowElement | TextElement | StickyElement;
 
 export interface Camera {
-  x: number;      // Pan X offset
-  y: number;      // Pan Y offset
-  zoom: number;   // Scale (1 = 100%)
+  x: number;
+  y: number;
+  zoom: number;
 }
-
-// ============================================
-// HELPERS
-// ============================================
 
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
+
+export const DEFAULT_ELEMENT_PROPS = {
+  stroke: '#000000',
+  strokeWidth: 2,
+  fill: 'transparent',
+  opacity: 1,
+  roughness: 1,
+};
 ```
 
-## Key Concepts
+## Shape Coordinates
 
-### Why Store Elements as Data?
-
-The canvas is "dumb" - it's just pixels. By storing elements as data objects:
-- We can easily serialize/save them
-- We can send them over WebSocket
-- We can undo/redo by storing history
-- We can select and manipulate them
-
-### Element Types
-
-Each shape type has different properties:
-- **Path**: Array of points
-- **Rectangle**: x, y, width, height
-- **Ellipse**: x, y, width, height
-- **Line/Arrow**: x, y, endX, endY
-- **Text**: x, y, text string
+| Shape | x, y means |
+|-------|------------|
+| Rectangle | Top-left corner |
+| Ellipse | Top-left of bounding box |
+| Circle | **Center point** |
+| Diamond | Top-left of bounding box |
+| Line/Arrow | Start point |
+| Text | Baseline start |
 
 ---
 
