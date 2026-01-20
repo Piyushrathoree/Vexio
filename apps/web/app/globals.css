@@ -15,11 +15,6 @@
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  @apply bg-gradient-to-br from-orange-100 via-orange-100/10 to-orange-300/20 min-h-screen text-slate-900 bg-fixed;
 }
+

@@ -1,11 +1,24 @@
-import React from 'react'
+"use client";
+import React from "react";
 
-const page = () => {
-  return (
-    <div>
+import Hero from "./components/Hero";
+import CollaborationSection from "./components/CollabrationSection";
+import AISection from "./components/AiIconSection";
+import WhySection from "./components/WhySection";
+import CTASection from "./components/CTASection";
+import Navbar from "./components/Navbar";
 
-    </div>
-  )
-}
+const Page = () => {
+    return (
+        <div className="min-h-screen">
+          <Navbar />
+            <Hero />
+            <CollaborationSection />
+            <AISection />
+            <WhySection />
+            <CTASection />
+        </div>
+    );
+};
 
-export default page
+export default Page;

@@ -6,37 +6,30 @@ A step-by-step guide to building a collaborative whiteboard with RoughJS.
 
 ## 📁 Documentation
 
-| Step | Topic | Link |
-|------|-------|------|
-| 0 | [Setup & Installation](./docs/00-setup.md) | Install dependencies |
-| 1 | [Types & Data Model](./docs/01-types.md) | Element types, tools, camera |
-| 2 | [Canvas Basics](./docs/02-canvas-basics.md) | Render loop, DPI handling |
-| 3 | [Camera System](./docs/03-camera.md) | Pan & zoom |
-| 4 | [Drawing with RoughJS](./docs/04-roughjs.md) | Sketchy shapes |
-| 5 | [Tool Implementation](./docs/05-tools.md) | Pen, shapes, eraser |
-| 6 | [Selection System](./docs/06-selection.md) | Hit testing, move, delete |
-| 7 | [Toolbar UI](./docs/07-toolbar.md) | Premium toolbar with Tailwind |
-| 8 | [WebSocket Sync](./docs/08-websocket.md) | Real-time collaboration |
+| Step | Topic |
+|------|-------|
+| [00-setup](./docs/00-setup.md) | Install & file structure |
+| [01-types](./docs/01-types.md) | Types & data model |
+| [02-canvas-basics](./docs/02-canvas-basics.md) | Render loop |
+| [03-camera](./docs/03-camera.md) | Pan & zoom |
+| [04-roughjs](./docs/04-roughjs.md) | Sketchy shapes |
+| [05-tools](./docs/05-tools.md) | All tools |
+| [06-selection](./docs/06-selection.md) | Hit testing |
+| [07-toolbar](./docs/07-toolbar.md) | UI |
+| [08-websocket](./docs/08-websocket.md) | Real-time sync |
 
 ---
 
-## 📁 File Structure
+## 🛠️ Tools
 
-```
-app/whiteboard/
-├── [roomId]/page.tsx      # Room entry
-├── page.tsx               # Index redirect
-├── components/
-│   ├── Canvas.tsx         # Main canvas
-│   └── Toolbar.tsx        # Tool buttons
-├── core/
-│   ├── types.ts           # TypeScript types
-│   ├── renderer.ts        # RoughJS drawing
-│   └── hitTest.ts         # Click detection
-├── hooks/
-│   └── useWhiteboardSync.ts
-└── docs/                  # This guide!
-```
+| Key | Tool | Key | Tool |
+|-----|------|-----|------|
+| V | Select | C | Circle |
+| H | Hand | D | Diamond |
+| P | Pen | L | Line |
+| E | Eraser | A | Arrow |
+| R | Rectangle | T | Text |
+| O | Ellipse | S | Sticky |
 
 ---
 
@@ -46,30 +39,5 @@ app/whiteboard/
 cd apps/web
 bun add roughjs
 bun run dev
-# Open http://localhost:3001/whiteboard/1
+# http://localhost:3001/whiteboard/1
 ```
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Key | Tool |
-|-----|------|
-| V | Select |
-| H | Hand (pan) |
-| P | Pen |
-| E | Eraser |
-| R | Rectangle |
-| O | Ellipse |
-| L | Line |
-| A | Arrow |
-| T | Text |
-| Backspace | Delete selected |
-
----
-
-## 🔗 Resources
-
-- [RoughJS](https://roughjs.com/)
-- [MDN Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
-- [Excalidraw](https://github.com/excalidraw/excalidraw)
