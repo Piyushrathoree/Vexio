@@ -96,9 +96,9 @@ const AISection = () => {
                 {/* Header */}
                 <div className="text-center max-w-3xl mx-auto mb-16 flex flex-col items-center">
                     <Badge
-                        icon={<Sparkles className="w-4 h-4 text-indigo-500" />}
+                        icon={<Sparkles className="w-4 h-4 text-orange-500" />}
                         text=" AI-Powered Icons"
-                        className2="text-indigo-600 border-indigo-400 shadow-inner shadow-indigo-300 font-bold"
+                        className2="text-orange-600 border-orange-400 shadow-inner shadow-orange-300 font-bold"
                     />
 
                     <h2
@@ -107,7 +107,7 @@ const AISection = () => {
                         Describe it.{" "}
                         <span
                             className={
-                                " bg-linear-to-br from-indigo-600 via-indigo-500 to-orange-500 bg-clip-text text-transparent"
+                                " bg-linear-to-br from-orange-600 via-orange-500 to-orange-400 bg-clip-text text-transparent"
                             }
                         >
                             Generate it.
@@ -129,7 +129,7 @@ const AISection = () => {
                         {/* Demo header */}
                         <div className="flex items-center gap-4 px-6 py-4 bg-slate-50/80 border-b border-slate-200/80">
                             <div className="flex items-center gap-2">
-                                <Sparkles className="w-5 h-5 text-indigo-500" />
+                                <Sparkles className="w-5 h-5 text-orange-500" />
                                 <span className="font-display font-semibold text-slate-900">
                                     AI Icon Generator
                                 </span>
@@ -144,7 +144,7 @@ const AISection = () => {
                                         Your prompt
                                     </label>
                                     <div className="relative">
-                                        <div className="w-full px-4 py-4 rounded-2xl bg-slate-50 border border-indigo-200 font-mono text-slate-900 text-sm leading-relaxed">
+                                        <div className="w-full px-4 py-4 rounded-2xl bg-slate-50 border border-orange-200 font-mono text-slate-900 text-sm leading-relaxed">
                                             {prompts[activePrompt]!.text}
                                             <span className="animate-pulse ml-0.5">
                                                 |
@@ -169,7 +169,7 @@ const AISection = () => {
                                             }}
                                             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                                                 activePrompt === index
-                                                    ? "bg-indigo-500 text-white shadow-sm"
+                                                    ? "bg-orange-500 text-white shadow-sm"
                                                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                                             }`}
                                         >
@@ -182,8 +182,8 @@ const AISection = () => {
                                 <button
                                     className={`w-full py-3.5 rounded-2xl font-semibold transition-all flex items-center justify-center gap-2 ${
                                         isGenerating
-                                            ? "bg-indigo-500/90 text-white shadow-sm"
-                                            : "bg-indigo-500 text-white hover:bg-indigo-600 shadow-lg hover:shadow-indigo-500/30"
+                                            ? "bg-orange-500/90 text-white shadow-sm"
+                                            : "bg-orange-500 text-white hover:bg-orange-600 shadow-lg hover:shadow-orange-500/30"
                                     }`}
                                     disabled={isGenerating}
                                 >
@@ -206,13 +206,13 @@ const AISection = () => {
                                 <div
                                     className={`w-32 h-32 rounded-xl border flex items-center justify-center transition-all duration-500 ${
                                         showResult
-                                            ? "border-indigo-300 bg-indigo-50 text-indigo-600 scale-100 shadow-md"
+                                            ? "border-orange-300 bg-orange-50 text-orange-600 scale-100 shadow-md"
                                             : "border-slate-200 bg-slate-50 text-slate-400 scale-95"
                                     }`}
                                 >
                                     {isGenerating ? (
                                         <div className="flex flex-col items-center gap-2">
-                                            <SketchSparkle className="w-8 h-8 animate-pulse-soft text-indigo-500" />
+                                            <SketchSparkle className="w-8 h-8 animate-pulse-soft text-orange-500" />
                                             <span className="text-xs text-slate-500">
                                                 Creating...
                                             </span>
@@ -244,8 +244,8 @@ const AISection = () => {
                             key={index}
                             className="group p-6 rounded-xl bg-card border border-border/50 shadow-soft hover:shadow-lg hover:border-primary/30 transition-all duration-300 hover:-translate-y-1"
                         >
-                            <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center mb-4 group-hover:bg-indigo-100 transition-colors">
-                                <useCase.icon className="w-6 h-6 text-indigo-500" />
+                            <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center mb-4 group-hover:bg-orange-100 transition-colors">
+                                <useCase.icon className="w-6 h-6 text-orange-500" />
                             </div>
                             <h3 className="font-display font-semibold text-lg text-slate-900 mb-2">
                                 {useCase.title}

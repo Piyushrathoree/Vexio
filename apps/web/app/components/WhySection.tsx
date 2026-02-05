@@ -19,9 +19,9 @@ const WhySection = () => {
         >
             <div className="container mx-auto px-6 relative">
                 <div className="max-w-4xl mx-auto text-center">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 mb-6">
-                        <Sparkles className="w-4 h-4 text-indigo-500" />
-                        <span className="text-sm font-medium text-indigo-600">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 mb-6">
+                        <Sparkles className="w-4 h-4 text-orange-500" />
+                        <span className="text-sm font-medium text-orange-600">
                             Why Vexio
                         </span>
                     </div>
@@ -33,7 +33,7 @@ const WhySection = () => {
                         <span className="relative inline-block">
                             <span
                                 className={
-                                    " bg-linear-to-br from-indigo-600 via-indigo-500 to-orange-500 bg-clip-text text-transparent"
+                                    " bg-linear-to-br from-orange-600 via-orange-500 to-orange-400 bg-clip-text text-transparent"
                                 }
                             >
                                 whiteboard.
@@ -53,10 +53,10 @@ const WhySection = () => {
                         {points.map((point, index) => (
                             <div
                                 key={index}
-                                className="flex items-center gap-3 px-5 py-3 rounded-full bg-white/60 backdrop-blur-sm border border-slate-200 shadow-soft hover:shadow-lg hover:border-indigo-300 transition-all duration-300 hover:-translate-y-0.5"
+                                className="flex items-center gap-3 px-5 py-3 rounded-full bg-white/60 backdrop-blur-sm border border-slate-200 shadow-soft hover:shadow-lg hover:border-orange-300 transition-all duration-300 hover:-translate-y-0.5"
                             >
-                                <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center">
-                                    <point.icon className="w-4 h-4 text-indigo-500" />
+                                <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center">
+                                    <point.icon className="w-4 h-4 text-orange-500" />
                                 </div>
                                 <span className="font-medium text-slate-900">
                                     {point.text}
@@ -67,10 +67,10 @@ const WhySection = () => {
 
                     {/* Visual quote / testimonial */}
                     <div className="relative max-w-2xl mx-auto p-8 rounded-3xl bg-white/60 backdrop-blur-sm border border-slate-200 shadow-xl">
-                        <SketchSparkle className="absolute -top-3 -left-3 w-8 h-8 text-indigo-400" />
+                        <SketchSparkle className="absolute -top-3 -left-3 w-8 h-8 text-orange-400" />
                         <SketchSparkle className="absolute -bottom-2 -right-2 w-6 h-6 text-orange-400" />
 
-                        <div className="text-5xl text-indigo-200 font-serif leading-none mb-4">
+                        <div className="text-5xl text-orange-200 font-serif leading-none mb-4">
                             "
                         </div>
                         <p className="text-lg text-slate-900  mb-4">
@@ -79,8 +79,8 @@ const WhySection = () => {
                             friction.
                         </p>
                         <div className="flex items-center justify-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center">
-                                <span className="font-bold text-indigo-600">
+                            <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center">
+                                <span className="font-bold text-orange-600">
                                     M
                                 </span>
                             </div>

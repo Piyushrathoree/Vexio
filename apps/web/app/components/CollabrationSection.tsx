@@ -65,7 +65,7 @@ const CollaborationSection = () => {
                                     key={index}
                                     className="flex items-center gap-3 p-3 rounded-lg bg-white/60 backdrop-blur-sm border border-slate-200 shadow-soft"
                                 >
-                                    <div className="w-8 h-8 rounded-md bg-indigo-50 flex items-center justify-center">
+                                    <div className="w-8 h-8 rounded-md bg-orange-50 flex items-center justify-center">
                                         <feature.icon className="w-4 h-4 text-primary" />
                                     </div>
                                     <span className="font-medium text-slate-900">
@@ -93,7 +93,7 @@ const CollaborationSection = () => {
                                         key={tool}
                                         className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                                             i === 1
-                                                ? "bg-indigo-500 text-white"
+                                                ? "bg-orange-500 text-white"
                                                 : "text-slate-700 hover:bg-slate-100"
                                         }`}
                                     >
@@ -120,8 +120,8 @@ const CollaborationSection = () => {
                                     <div className="absolute top-4 left-4">
                                         {/* <CursorPointer color="#6366f1" name="Alex" className="animate-cursor-move" /> */}
                                     </div>
-                                    <div className="absolute top-12 left-8 w-36 h-24 rounded-lg border-2 border-indigo-400/60 bg-indigo-50 flex items-center justify-center animate-pulse-soft">
-                                        <span className="text-sm text-indigo-600 font-medium">
+                                    <div className="absolute top-12 left-8 w-36 h-24 rounded-lg border-2 border-orange-400/60 bg-orange-50 flex items-center justify-center animate-pulse-soft">
+                                        <span className="text-sm text-orange-600 font-medium">
                                             Landing Page
                                         </span>
                                     </div>
@@ -174,7 +174,7 @@ const CollaborationSection = () => {
                             {/* Participants bar */}
                             <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-t border-slate-200">
                                 <div className="flex -space-x-2">
-                                    {["#6366f1", "#f97316", "#14b8a6"].map(
+                                    {["#f97316", "#ea580c", "#fb923c"].map(
                                         (color, i) => (
                                             <div
                                                 key={i}
@@ -207,8 +207,8 @@ const CollaborationSection = () => {
                             key={index}
                             className="group p-6 rounded-xl bg-card border border-border/50 shadow-soft hover:shadow-lg hover:border-primary/30 transition-all duration-300 hover:-translate-y-1"
                         >
-                            <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center mb-4 group-hover:bg-indigo-100 transition-colors">
-                                <useCase.icon className="w-6 h-6 text-indigo-500" />
+                            <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center mb-4 group-hover:bg-orange-100 transition-colors">
+                                <useCase.icon className="w-6 h-6 text-orange-500" />
                             </div>
                             <h3 className="font-display font-semibold text-lg text-slate-900 mb-2">
                                 {useCase.title}

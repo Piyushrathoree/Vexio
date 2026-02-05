@@ -9,7 +9,7 @@ const Navbar = () => {
           >
               <a
                   href="#"
-                  className={`text-indigo-600 text-2xl text-bold ${ranchers.className}`}
+                  className={`text-orange-600 text-2xl text-bold ${ranchers.className}`}
               >
                   VEXIO
               </a>
