@@ -13,10 +13,12 @@ type Tool =
     | "arrow"
     | "rect"
     | "ellipse"
-    | "diamond";
+    | "diamond"
+    | "text";
 
 type ShapeType = "line" | "arrow" | "rect" | "ellipse" | "diamond";
-type DrawableType = ShapeType | "pen";
+type FillableShapeType = "rect" | "ellipse" | "diamond";
+type DrawableType = ShapeType | "pen" | "text";
 
 interface BaseElement {
     id: string;
@@ -31,6 +33,7 @@ interface ShapeElement extends BaseElement {
     y1: number;
     x2: number;
     y2: number;
+    fill: string | null;
 }
 
 interface PenElement extends BaseElement {
@@ -38,9 +41,48 @@ interface PenElement extends BaseElement {
     points: StrokePoint[];
 }
 
-type DrawingElement = ShapeElement | PenElement;
+interface TextElement extends BaseElement {
+    type: "text";
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    text: string;
+}
 
-type PointerMode = "drawing" | "panning" | "moving" | "erasing";
+interface ActiveTextEditor {
+    x: number;
+    y: number;
+    screenX: number;
+    screenY: number;
+    elementId?: string;
+    width?: number;
+    height?: number;
+    text: string;
+    color: string;
+    thickness: number;
+}
+
+type DrawingElement = ShapeElement | PenElement | TextElement;
+
+type PointerMode = "drawing" | "panning" | "moving" | "resizing" | "erasing";
+type ResizeHandle =
+    | "start"
+    | "end"
+    | "n"
+    | "ne"
+    | "e"
+    | "se"
+    | "s"
+    | "sw"
+    | "w"
+    | "nw";
+
+interface ResizeHandleDescriptor {
+    id: ResizeHandle;
+    point: Point;
+    cursorClass: string;
+}
 
 interface PointerState {
     mode: PointerMode;
@@ -48,6 +90,8 @@ interface PointerState {
     lastWorld: Point;
     lastScreen: Point;
     elementId?: string;
+    resizeHandle?: ResizeHandle;
+    originElement?: DrawingElement;
 }
 
 const TOOLBAR_TOOLS: Array<{ id: Tool; label: string }> = [
@@ -60,6 +104,7 @@ const TOOLBAR_TOOLS: Array<{ id: Tool; label: string }> = [
     { id: "rect", label: "Rectangle" },
     { id: "ellipse", label: "Ellipse" },
     { id: "diamond", label: "Diamond" },
+    { id: "text", label: "Text" },
 ];
 
 const COLOR_PALETTE = [
@@ -73,6 +118,13 @@ const COLOR_PALETTE = [
     "#ffffff",
 ];
 
+const FILL_ALPHA = 0.2;
+const RESIZE_HANDLE_HIT_RADIUS = 10;
+const TEXT_PADDING_X = 6;
+const TEXT_PADDING_Y = 4;
+const TEXT_FONT_RATIO = 0.82;
+const TEXT_FONT_FAMILY = `"Comic Sans MS", "Segoe Print", "Bradley Hand", cursive`;
+
 const distance = (a: Point, b: Point): number => {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
@@ -81,6 +133,73 @@ const distance = (a: Point, b: Point): number => {
 
 const clamp = (value: number, min: number, max: number): number => {
     return Math.max(min, Math.min(max, value));
+};
+
+const isFillableShapeType = (
+    shapeType: ShapeType
+): shapeType is FillableShapeType => {
+    return (
+        shapeType === "rect" ||
+        shapeType === "ellipse" ||
+        shapeType === "diamond"
+    );
+};
+
+const isFillableShape = (
+    el: DrawingElement
+): el is ShapeElement & { type: FillableShapeType } => {
+    return el.type === "rect" || el.type === "ellipse" || el.type === "diamond";
+};
+
+const toFillColor = (hexColor: string, alpha: number): string => {
+    const normalized = hexColor.trim();
+    if (!normalized.startsWith("#")) {
+        return hexColor;
+    }
+
+    const raw = normalized.slice(1);
+    const expanded =
+        raw.length === 3
+            ? raw
+                  .split("")
+                  .map((part) => `${part}${part}`)
+                  .join("")
+            : raw;
+
+    if (expanded.length !== 6 || Number.isNaN(Number.parseInt(expanded, 16))) {
+        return hexColor;
+    }
+
+    const red = Number.parseInt(expanded.slice(0, 2), 16);
+    const green = Number.parseInt(expanded.slice(2, 4), 16);
+    const blue = Number.parseInt(expanded.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+};
+
+const splitTextLines = (text: string): string[] => {
+    return text.replace(/\r\n/g, "\n").split("\n");
+};
+
+const getTextBaseSize = (thickness: number): number => {
+    return clamp(14 + thickness * 2, 14, 42);
+};
+
+const estimateTextBounds = (
+    text: string,
+    thickness: number
+): { width: number; height: number } => {
+    const lines = splitTextLines(text);
+    const maxChars = lines.reduce((max, line) => Math.max(max, line.length), 1);
+    const baseSize = getTextBaseSize(thickness);
+    const lineHeight = baseSize * 1.28;
+    return {
+        width:
+            Math.max(baseSize * 1.2, maxChars * baseSize * 0.62) +
+            TEXT_PADDING_X * 2,
+        height:
+            Math.max(lineHeight, lines.length * lineHeight) +
+            TEXT_PADDING_Y * 2,
+    };
 };
 
 const toStrokePoint = (
@@ -149,7 +268,12 @@ const distanceToSegment = (p: Point, a: Point, b: Point): number => {
     return distance(p, projection);
 };
 
-const normalizeRect = (el: ShapeElement) => {
+const normalizeRect = (el: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+}) => {
     const minX = Math.min(el.x1, el.x2);
     const minY = Math.min(el.y1, el.y2);
     const maxX = Math.max(el.x1, el.x2);
@@ -185,12 +309,262 @@ const getElementBounds = (el: DrawingElement) => {
     return { minX, minY, maxX, maxY };
 };
 
+const getResizeHandleAtPoint = (
+    point: Point,
+    el: DrawingElement
+): ResizeHandleDescriptor | null => {
+    if (el.type === "line" || el.type === "arrow") {
+        if (!isPointNearElement(point, el, RESIZE_HANDLE_HIT_RADIUS)) {
+            return null;
+        }
+
+        const startPoint = { x: el.x1, y: el.y1 };
+        const endPoint = { x: el.x2, y: el.y2 };
+        const startDistance = distance(point, startPoint);
+        const endDistance = distance(point, endPoint);
+        const nearest =
+            startDistance <= endDistance
+                ? { id: "start" as const, point: startPoint }
+                : { id: "end" as const, point: endPoint };
+        return {
+            id: nearest.id,
+            point: nearest.point,
+            cursorClass: "cursor-move",
+        };
+    }
+
+    const { minX, minY, maxX, maxY } = getElementBounds(el);
+    const tolerance = RESIZE_HANDLE_HIT_RADIUS;
+    const nearLeft = Math.abs(point.x - minX) <= tolerance;
+    const nearRight = Math.abs(point.x - maxX) <= tolerance;
+    const nearTop = Math.abs(point.y - minY) <= tolerance;
+    const nearBottom = Math.abs(point.y - maxY) <= tolerance;
+    const withinVertical =
+        point.y >= minY - tolerance && point.y <= maxY + tolerance;
+    const withinHorizontal =
+        point.x >= minX - tolerance && point.x <= maxX + tolerance;
+
+    if (nearTop && nearLeft) {
+        return {
+            id: "nw",
+            point: { x: minX, y: minY },
+            cursorClass: "cursor-nwse-resize",
+        };
+    }
+
+    if (nearTop && nearRight) {
+        return {
+            id: "ne",
+            point: { x: maxX, y: minY },
+            cursorClass: "cursor-nesw-resize",
+        };
+    }
+
+    if (nearBottom && nearRight) {
+        return {
+            id: "se",
+            point: { x: maxX, y: maxY },
+            cursorClass: "cursor-nwse-resize",
+        };
+    }
+
+    if (nearBottom && nearLeft) {
+        return {
+            id: "sw",
+            point: { x: minX, y: maxY },
+            cursorClass: "cursor-nesw-resize",
+        };
+    }
+
+    if (nearTop && withinHorizontal) {
+        return {
+            id: "n",
+            point: { x: (minX + maxX) * 0.5, y: minY },
+            cursorClass: "cursor-ns-resize",
+        };
+    }
+
+    if (nearBottom && withinHorizontal) {
+        return {
+            id: "s",
+            point: { x: (minX + maxX) * 0.5, y: maxY },
+            cursorClass: "cursor-ns-resize",
+        };
+    }
+
+    if (nearRight && withinVertical) {
+        return {
+            id: "e",
+            point: { x: maxX, y: (minY + maxY) * 0.5 },
+            cursorClass: "cursor-ew-resize",
+        };
+    }
+
+    if (nearLeft && withinVertical) {
+        return {
+            id: "w",
+            point: { x: minX, y: (minY + maxY) * 0.5 },
+            cursorClass: "cursor-ew-resize",
+        };
+    }
+
+    return null;
+};
+
+const mapAxisCoordinate = (
+    value: number,
+    fromStart: number,
+    fromEnd: number,
+    toStart: number,
+    toEnd: number
+): number => {
+    const fromSize = fromEnd - fromStart;
+    if (Math.abs(fromSize) < 0.00001) {
+        return value + (toStart - fromStart);
+    }
+
+    const ratio = (value - fromStart) / fromSize;
+    return toStart + ratio * (toEnd - toStart);
+};
+
+const scaleElementToBounds = (
+    el: DrawingElement,
+    fromBounds: { minX: number; minY: number; maxX: number; maxY: number },
+    toBounds: { minX: number; minY: number; maxX: number; maxY: number }
+): DrawingElement => {
+    const mapX = (value: number) =>
+        mapAxisCoordinate(
+            value,
+            fromBounds.minX,
+            fromBounds.maxX,
+            toBounds.minX,
+            toBounds.maxX
+        );
+    const mapY = (value: number) =>
+        mapAxisCoordinate(
+            value,
+            fromBounds.minY,
+            fromBounds.maxY,
+            toBounds.minY,
+            toBounds.maxY
+        );
+
+    if (el.type === "pen") {
+        return {
+            ...el,
+            points: el.points.map((point) => ({
+                ...point,
+                x: mapX(point.x),
+                y: mapY(point.y),
+            })),
+        };
+    }
+
+    return {
+        ...el,
+        x1: mapX(el.x1),
+        y1: mapY(el.y1),
+        x2: mapX(el.x2),
+        y2: mapY(el.y2),
+    };
+};
+
+const resizeElementFromHandle = (
+    initialElement: DrawingElement,
+    handle: ResizeHandle,
+    pointer: Point
+): DrawingElement => {
+    if (
+        (handle === "start" || handle === "end") &&
+        (initialElement.type === "line" || initialElement.type === "arrow")
+    ) {
+        if (handle === "start") {
+            return {
+                ...initialElement,
+                x1: pointer.x,
+                y1: pointer.y,
+            };
+        }
+
+        return {
+            ...initialElement,
+            x2: pointer.x,
+            y2: pointer.y,
+        };
+    }
+
+    const initialBounds = getElementBounds(initialElement);
+    let nextMinX = initialBounds.minX;
+    let nextMinY = initialBounds.minY;
+    let nextMaxX = initialBounds.maxX;
+    let nextMaxY = initialBounds.maxY;
+
+    switch (handle) {
+        case "n": {
+            nextMinY = pointer.y;
+            break;
+        }
+        case "ne": {
+            nextMinY = pointer.y;
+            nextMaxX = pointer.x;
+            break;
+        }
+        case "e": {
+            nextMaxX = pointer.x;
+            break;
+        }
+        case "se": {
+            nextMaxX = pointer.x;
+            nextMaxY = pointer.y;
+            break;
+        }
+        case "s": {
+            nextMaxY = pointer.y;
+            break;
+        }
+        case "sw": {
+            nextMinX = pointer.x;
+            nextMaxY = pointer.y;
+            break;
+        }
+        case "w": {
+            nextMinX = pointer.x;
+            break;
+        }
+        case "nw": {
+            nextMinX = pointer.x;
+            nextMinY = pointer.y;
+            break;
+        }
+        default: {
+            break;
+        }
+    }
+
+    return scaleElementToBounds(initialElement, initialBounds, {
+        minX: nextMinX,
+        minY: nextMinY,
+        maxX: nextMaxX,
+        maxY: nextMaxY,
+    });
+};
+
 const isPointNearElement = (
     point: Point,
     el: DrawingElement,
     tolerance = 8
 ): boolean => {
     const threshold = Math.max(tolerance, el.thickness * 1.5);
+
+    if (el.type === "text") {
+        const { minX, minY, maxX, maxY } = normalizeRect(el);
+        return (
+            point.x >= minX - threshold &&
+            point.x <= maxX + threshold &&
+            point.y >= minY - threshold &&
+            point.y <= maxY + threshold
+        );
+    }
 
     if (el.type === "line" || el.type === "arrow") {
         return (
@@ -204,6 +578,15 @@ const isPointNearElement = (
 
     if (el.type === "rect") {
         const { minX, minY, maxX, maxY } = normalizeRect(el);
+        if (
+            point.x >= minX &&
+            point.x <= maxX &&
+            point.y >= minY &&
+            point.y <= maxY
+        ) {
+            return true;
+        }
+
         return (
             distanceToSegment(
                 point,
@@ -231,6 +614,17 @@ const isPointNearElement = (
     if (el.type === "diamond") {
         const cx = (el.x1 + el.x2) / 2;
         const cy = (el.y1 + el.y2) / 2;
+        const halfWidth = Math.abs(el.x2 - el.x1) / 2;
+        const halfHeight = Math.abs(el.y2 - el.y1) / 2;
+
+        if (halfWidth > 0 && halfHeight > 0) {
+            const normalizedX = Math.abs((point.x - cx) / halfWidth);
+            const normalizedY = Math.abs((point.y - cy) / halfHeight);
+            if (normalizedX + normalizedY <= 1) {
+                return true;
+            }
+        }
+
         const points: Point[] = [
             { x: cx, y: Math.min(el.y1, el.y2) },
             { x: Math.max(el.x1, el.x2), y: cy },
@@ -258,6 +652,10 @@ const isPointNearElement = (
         const dx = (point.x - cx) / rx;
         const dy = (point.y - cy) / ry;
         const value = Math.sqrt(dx * dx + dy * dy);
+        if (value <= 1) {
+            return true;
+        }
+
         const ring = threshold / Math.max(4, Math.min(rx, ry));
         return Math.abs(value - 1) <= ring;
     }
@@ -269,6 +667,7 @@ const isPointNearElement = (
     for (let i = 0; i < el.points.length - 1; i += 1) {
         const p1 = el.points[i];
         const p2 = el.points[i + 1];
+
         if (p1 && p2 && distanceToSegment(point, p1, p2) <= threshold) {
             return true;
         }
@@ -345,7 +744,50 @@ const drawShape = (ctx: CanvasRenderingContext2D, el: ShapeElement): void => {
         }
     }
 
+    if (el.fill && isFillableShapeType(el.type)) {
+        ctx.fillStyle = el.fill;
+        ctx.fill();
+    }
+
     ctx.stroke();
+};
+
+const drawTextElement = (
+    ctx: CanvasRenderingContext2D,
+    el: TextElement
+): void => {
+    const { minX, minY, width, height } = normalizeRect(el);
+    if (width < 2 || height < 2) {
+        return;
+    }
+
+    const lines = splitTextLines(el.text);
+    const lineCount = Math.max(1, lines.length);
+    const contentWidth = Math.max(1, width - TEXT_PADDING_X * 2);
+    const contentHeight = Math.max(1, height - TEXT_PADDING_Y * 2);
+    const lineHeight = contentHeight / lineCount;
+    const fontSize = Math.max(10, lineHeight * TEXT_FONT_RATIO);
+
+    ctx.save();
+    ctx.fillStyle = el.color;
+    ctx.font = `${fontSize}px ${TEXT_FONT_FAMILY}`;
+    ctx.textBaseline = "top";
+
+    for (let i = 0; i < lineCount; i += 1) {
+        const line = lines[i] ?? "";
+        const measuredWidth = Math.max(1, ctx.measureText(line || " ").width);
+        const horizontalScale = Math.min(1, contentWidth / measuredWidth);
+        ctx.save();
+        ctx.translate(
+            minX + TEXT_PADDING_X,
+            minY + TEXT_PADDING_Y + i * lineHeight
+        );
+        ctx.scale(horizontalScale, 1);
+        ctx.fillText(line, 0, 0);
+        ctx.restore();
+    }
+
+    ctx.restore();
 };
 
 const drawElement = (
@@ -355,6 +797,11 @@ const drawElement = (
     ctx.strokeStyle = el.color;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+
+    if (el.type === "text") {
+        drawTextElement(ctx, el);
+        return;
+    }
 
     if (el.type === "pen") {
         if (el.points.length === 0) {
@@ -387,7 +834,6 @@ const drawElement = (
             if (!previous || !current || !next) {
                 continue;
             }
-
             const start = {
                 x: (previous.x + current.x) * 0.5,
                 y: (previous.y + current.y) * 0.5,
@@ -451,25 +897,56 @@ const buildId = (): string => {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
+const buildTextElement = (
+    position: Point,
+    text: string,
+    color: string,
+    thickness: number
+): TextElement => {
+    const { width, height } = estimateTextBounds(text, thickness);
+    return {
+        id: buildId(),
+        type: "text",
+        color,
+        thickness,
+        text,
+        x1: position.x,
+        y1: position.y,
+        x2: position.x + width,
+        y2: position.y + height,
+    };
+};
+
 const minDrawableSize = 2;
 
 export default function Home() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const textInputRef = useRef<HTMLTextAreaElement | null>(null);
     const rafRef = useRef<number | null>(null);
     const panRef = useRef<Point>({ x: 0, y: 0 });
     const elementsRef = useRef<DrawingElement[]>([]);
     const draftRef = useRef<DrawingElement | null>(null);
     const pointerStateRef = useRef<PointerState | null>(null);
     const selectedIdRef = useRef<string | null>(null);
+    const textEditorRef = useRef<ActiveTextEditor | null>(null);
 
     const [tool, setTool] = useState<Tool>("select");
     const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#000000");
     const [thickness, setThickness] = useState<number>(3);
+    const [fillDropperActive, setFillDropperActive] = useState<boolean>(false);
+    const [hoverCursorClass, setHoverCursorClass] = useState<string | null>(
+        null
+    );
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [textEditor, setTextEditor] = useState<ActiveTextEditor | null>(null);
 
     useEffect(() => {
         selectedIdRef.current = selectedId;
     }, [selectedId]);
+
+    useEffect(() => {
+        textEditorRef.current = textEditor;
+    }, [textEditor]);
 
     const scheduleDraw = useCallback(() => {
         if (rafRef.current !== null) {
@@ -524,8 +1001,12 @@ export default function Home() {
 
             ctx.save();
             ctx.translate(pan.x, pan.y);
+            const editingElementId = textEditorRef.current?.elementId ?? null;
 
             for (const el of elementsRef.current) {
+                if (editingElementId && el.id === editingElementId) {
+                    continue;
+                }
                 drawElement(ctx, el);
             }
 
@@ -538,7 +1019,10 @@ export default function Home() {
                     (el) => el.id === selectedIdRef.current
                 );
 
-                if (selectedElement) {
+                if (
+                    selectedElement &&
+                    selectedElement.id !== editingElementId
+                ) {
                     const { minX, minY, maxX, maxY } =
                         getElementBounds(selectedElement);
                     ctx.setLineDash([6, 4]);
@@ -603,14 +1087,52 @@ export default function Home() {
         (point: Point): DrawingElement | null => {
             const elements = elementsRef.current;
             for (let i = elements.length - 1; i >= 0; i -= 1) {
-                const element = elements[i];
-                if (element && isPointNearElement(point, element)) {
-                    return element;
+                const el = elements[i];
+                if (el && isPointNearElement(point, el)) {
+                    return el;
                 }
             }
             return null;
         },
         []
+    );
+
+    const startTextEditor = useCallback((nextEditor: ActiveTextEditor) => {
+        setTextEditor(nextEditor);
+        window.requestAnimationFrame(() => {
+            const input = textInputRef.current;
+            if (!input) {
+                return;
+            }
+
+            input.focus();
+            const length = input.value.length;
+            input.setSelectionRange(length, length);
+        });
+    }, []);
+
+    const openTextEditorForElement = useCallback(
+        (el: TextElement) => {
+            const { minX, minY, width, height } = normalizeRect(el);
+            const pan = panRef.current;
+            startTextEditor({
+                x: minX,
+                y: minY,
+                screenX: minX + pan.x,
+                screenY: minY + pan.y,
+                elementId: el.id,
+                width,
+                height,
+                text: el.text,
+                color: el.color,
+                thickness: el.thickness,
+            });
+            selectedIdRef.current = el.id;
+            setSelectedId(el.id);
+            setHoverCursorClass(null);
+            setFillDropperActive(false);
+        },
+        [startTextEditor]
     );
 
     const eraseAtPoint = useCallback(
@@ -636,13 +1158,171 @@ export default function Home() {
         [setSelectedId]
     );
 
+    const commitTextEditor = useCallback(
+        (switchToSelect = false) => {
+            const activeEditor = textEditorRef.current;
+            if (!activeEditor) {
+                if (switchToSelect) {
+                    setTool("select");
+                    setHoverCursorClass(null);
+                }
+                return;
+            }
+
+            const normalizedText = activeEditor.text.replace(/\r\n/g, "\n");
+            const hasText = normalizedText.trim().length > 0;
+
+            if (activeEditor.elementId) {
+                const existingElement = elementsRef.current.find(
+                    (el) => el.id === activeEditor.elementId
+                );
+
+                if (existingElement?.type === "text") {
+                    if (!hasText) {
+                        elementsRef.current = elementsRef.current.filter(
+                            (el) => el.id !== activeEditor.elementId
+                        );
+                        if (selectedIdRef.current === activeEditor.elementId) {
+                            selectedIdRef.current = null;
+                            setSelectedId(null);
+                        }
+                    } else {
+                        const nextWidth =
+                            activeEditor.width ??
+                            Math.abs(existingElement.x2 - existingElement.x1);
+                        const nextHeight =
+                            activeEditor.height ??
+                            Math.abs(existingElement.y2 - existingElement.y1);
+
+                        elementsRef.current = elementsRef.current.map((el) => {
+                            if (
+                                el.id !== activeEditor.elementId ||
+                                el.type !== "text"
+                            ) {
+                                return el;
+                            }
+
+                            return {
+                                ...el,
+                                text: normalizedText,
+                                color: activeEditor.color,
+                                thickness: activeEditor.thickness,
+                                x1: activeEditor.x,
+                                y1: activeEditor.y,
+                                x2: activeEditor.x + nextWidth,
+                                y2: activeEditor.y + nextHeight,
+                            };
+                        });
+                        selectedIdRef.current = activeEditor.elementId;
+                        setSelectedId(activeEditor.elementId);
+                    }
+                }
+            } else if (hasText) {
+                const textElement = buildTextElement(
+                    { x: activeEditor.x, y: activeEditor.y },
+                    normalizedText,
+                    activeEditor.color,
+                    activeEditor.thickness
+                );
+                elementsRef.current = [...elementsRef.current, textElement];
+                selectedIdRef.current = textElement.id;
+                setSelectedId(textElement.id);
+            }
+
+            setTextEditor(null);
+            if (switchToSelect) {
+                setTool("select");
+                setHoverCursorClass(null);
+            }
+            scheduleDraw();
+        },
+        [scheduleDraw]
+    );
+
+    const cancelTextEditor = useCallback(
+        (switchToSelect = false) => {
+            if (!textEditorRef.current) {
+                if (switchToSelect) {
+                    setTool("select");
+                    setHoverCursorClass(null);
+                }
+                return;
+            }
+
+            setTextEditor(null);
+            if (switchToSelect) {
+                setTool("select");
+                setHoverCursorClass(null);
+            }
+            scheduleDraw();
+        },
+        [scheduleDraw]
+    );
+
+    const toggleFill = useCallback(() => {
+        commitTextEditor(false);
+        setTool("select");
+        setHoverCursorClass(null);
+        setFillDropperActive((prev) => !prev);
+    }, [commitTextEditor]);
+
     const handlePointerDown = useCallback(
         (event: React.PointerEvent<HTMLCanvasElement>) => {
             event.preventDefault();
             const canvas = event.currentTarget;
-            canvas.setPointerCapture(event.pointerId);
-
             const { world, screen } = getPoints(event);
+
+            if (textEditorRef.current && tool !== "text") {
+                commitTextEditor(false);
+            }
+
+            if (fillDropperActive) {
+                const target = getElementAtPoint(world);
+                if (target && isFillableShape(target)) {
+                    const fillColor = toFillColor(color, FILL_ALPHA);
+                    elementsRef.current = elementsRef.current.map((el) => {
+                        if (el.id === target.id && isFillableShape(el)) {
+                            return { ...el, fill: fillColor };
+                        }
+                        return el;
+                    });
+                    selectedIdRef.current = target.id;
+                    setSelectedId(target.id);
+                    setFillDropperActive(false);
+                    scheduleDraw();
+                }
+
+                return;
+            }
+
+            if (tool === "text") {
+                commitTextEditor(false);
+                pointerStateRef.current = null;
+                setHoverCursorClass(null);
+                setFillDropperActive(false);
+
+                const target = getElementAtPoint(world);
+                if (target?.type === "text") {
+                    openTextEditorForElement(target);
+                    scheduleDraw();
+                    return;
+                }
+
+                selectedIdRef.current = null;
+                setSelectedId(null);
+                startTextEditor({
+                    x: world.x,
+                    y: world.y,
+                    screenX: screen.x,
+                    screenY: screen.y,
+                    text: "",
+                    color,
+                    thickness,
+                });
+                return;
+            }
+
+            canvas.setPointerCapture(event.pointerId);
 
             if (tool === "hand") {
                 pointerStateRef.current = {
@@ -667,6 +1347,34 @@ export default function Home() {
             }
 
             if (tool === "select") {
+                const selectedElementId = selectedIdRef.current;
+                const selectedElement = selectedElementId
+                    ? (elementsRef.current.find(
+                          (el) => el.id === selectedElementId
+                      ) ?? null)
+                    : null;
+
+                if (selectedElement) {
+                    const resizeHandle = getResizeHandleAtPoint(
+                        world,
+                        selectedElement
+                    );
+                    if (resizeHandle) {
+                        pointerStateRef.current = {
+                            mode: "resizing",
+                            pointerId: event.pointerId,
+                            lastWorld: world,
+                            lastScreen: screen,
+                            elementId: selectedElement.id,
+                            resizeHandle: resizeHandle.id,
+                            originElement: selectedElement,
+                        };
+                        setHoverCursorClass(resizeHandle.cursorClass);
+                        scheduleDraw();
+                        return;
+                    }
+                }
+
                 const target = getElementAtPoint(world);
 
                 if (target) {
@@ -683,6 +1391,7 @@ export default function Home() {
                     selectedIdRef.current = null;
                     setSelectedId(null);
                     pointerStateRef.current = null;
+                    setHoverCursorClass(null);
                 }
 
                 scheduleDraw();
@@ -699,11 +1408,13 @@ export default function Home() {
                     points: [initialPoint],
                 };
             } else {
+                const shapeType = tool as ShapeType;
                 draftRef.current = {
                     id: buildId(),
-                    type: tool,
+                    type: shapeType,
                     color,
                     thickness,
+                    fill: null,
                     x1: world.x,
                     y1: world.y,
                     x2: world.x,
@@ -719,27 +1430,78 @@ export default function Home() {
             };
             selectedIdRef.current = null;
             setSelectedId(null);
+            setHoverCursorClass(null);
+            setFillDropperActive(false);
             scheduleDraw();
         },
         [
             color,
+            commitTextEditor,
             eraseAtPoint,
+            fillDropperActive,
             getElementAtPoint,
             getPoints,
+            openTextEditorForElement,
             scheduleDraw,
+            startTextEditor,
             thickness,
             tool,
         ]
     );
 
-    const handlePointerMove = useCallback(
-        (event: React.PointerEvent<HTMLCanvasElement>) => {
-            const pointer = pointerStateRef.current;
-            if (!pointer || pointer.pointerId !== event.pointerId) {
+    const handleDoubleClick = useCallback(
+        (event: React.MouseEvent<HTMLCanvasElement>) => {
+            if (fillDropperActive) {
                 return;
             }
 
+            const rect = event.currentTarget.getBoundingClientRect();
+            const world = {
+                x: event.clientX - rect.left - panRef.current.x,
+                y: event.clientY - rect.top - panRef.current.y,
+            };
+            const target = getElementAtPoint(world);
+            if (target?.type !== "text") {
+                return;
+            }
+
+            event.preventDefault();
+            commitTextEditor(false);
+            pointerStateRef.current = null;
+            openTextEditorForElement(target);
+            scheduleDraw();
+        },
+        [
+            commitTextEditor,
+            fillDropperActive,
+            getElementAtPoint,
+            openTextEditorForElement,
+            scheduleDraw,
+        ]
+    );
+
+    const handlePointerMove = useCallback(
+        (event: React.PointerEvent<HTMLCanvasElement>) => {
             const { world, screen } = getPoints(event);
+            const pointer = pointerStateRef.current;
+            if (!pointer || pointer.pointerId !== event.pointerId) {
+                if (tool === "select" && !fillDropperActive) {
+                    const selectedElementId = selectedIdRef.current;
+                    const selectedElement = selectedElementId
+                        ? (elementsRef.current.find(
+                              (el) => el.id === selectedElementId
+                          ) ?? null)
+                        : null;
+                    const hoverHandle = selectedElement
+                        ? getResizeHandleAtPoint(world, selectedElement)
+                        : null;
+                    const cursorClass = hoverHandle?.cursorClass ?? null;
+                    setHoverCursorClass((current) =>
+                        current === cursorClass ? current : cursorClass
+                    );
+                }
+                return;
+            }
 
             if (pointer.mode === "panning") {
                 panRef.current = {
@@ -761,6 +1523,29 @@ export default function Home() {
                     ...pointer,
                     lastScreen: screen,
                     lastWorld: world,
+                };
+                scheduleDraw();
+                return;
+            }
+
+            if (
+                pointer.mode === "resizing" &&
+                pointer.elementId &&
+                pointer.resizeHandle &&
+                pointer.originElement
+            ) {
+                const resizedElement = resizeElementFromHandle(
+                    pointer.originElement,
+                    pointer.resizeHandle,
+                    world
+                );
+                elementsRef.current = elementsRef.current.map((el) =>
+                    el.id === pointer.elementId ? resizedElement : el
+                );
+                pointerStateRef.current = {
+                    ...pointer,
+                    lastWorld: world,
+                    lastScreen: screen,
                 };
                 scheduleDraw();
                 return;
@@ -826,7 +1611,7 @@ export default function Home() {
             };
             scheduleDraw();
         },
-        [eraseAtPoint, getPoints, scheduleDraw]
+        [eraseAtPoint, fillDropperActive, getPoints, scheduleDraw, tool]
     );
 
     const handlePointerUp = useCallback(
@@ -836,6 +1621,7 @@ export default function Home() {
                 return;
             }
 
+            let completedDrawing = false;
             if (pointer.mode === "drawing" && draftRef.current) {
                 const draft = draftRef.current;
 
@@ -848,13 +1634,22 @@ export default function Home() {
                     const height = Math.abs(draft.y2 - draft.y1);
                     if (width >= minDrawableSize || height >= minDrawableSize) {
                         elementsRef.current = [...elementsRef.current, draft];
+                        completedDrawing = true;
                     }
                 }
 
                 draftRef.current = null;
             }
 
+            if (completedDrawing) {
+                setTool("select");
+                setHoverCursorClass(null);
+            }
+
             pointerStateRef.current = null;
+            if (tool === "select") {
+                setHoverCursorClass(null);
+            }
 
             try {
                 event.currentTarget.releasePointerCapture(event.pointerId);
@@ -864,7 +1659,7 @@ export default function Home() {
 
             scheduleDraw();
         },
-        [scheduleDraw]
+        [scheduleDraw, tool]
     );
 
     const clearCanvas = useCallback(() => {
@@ -872,6 +1667,9 @@ export default function Home() {
         draftRef.current = null;
         pointerStateRef.current = null;
         selectedIdRef.current = null;
+        setTextEditor(null);
+        setFillDropperActive(false);
+        setHoverCursorClass(null);
         setSelectedId(null);
         scheduleDraw();
     }, [scheduleDraw]);
@@ -879,11 +1677,35 @@ export default function Home() {
     const canvasCursorClass =
         tool === "hand"
             ? "cursor-grab"
-            : tool === "select"
-              ? "cursor-default"
-              : tool === "eraser"
-                ? "cursor-cell"
-                : "cursor-crosshair";
+            : fillDropperActive
+              ? "cursor-cell"
+              : tool === "select"
+                ? (hoverCursorClass ?? "cursor-default")
+                : tool === "text"
+                  ? "cursor-text"
+                  : tool === "eraser"
+                    ? "cursor-cell"
+                    : "cursor-crosshair";
+    const textEditorLines = textEditor ? splitTextLines(textEditor.text) : [];
+    const textEditorMaxChars = textEditor
+        ? textEditorLines.reduce((max, line) => Math.max(max, line.length), 1)
+        : 1;
+    const textEditorFontSize = textEditor
+        ? getTextBaseSize(textEditor.thickness)
+        : 16;
+    const textEditorLineHeight = textEditorFontSize * 1.28;
+    const autoTextEditorWidth = Math.max(
+        140,
+        textEditorMaxChars * textEditorFontSize * 0.62 + TEXT_PADDING_X * 2 + 8
+    );
+    const autoTextEditorHeight = Math.max(
+        textEditorLineHeight + TEXT_PADDING_Y * 2,
+        Math.max(1, textEditorLines.length) * textEditorLineHeight +
+            TEXT_PADDING_Y * 2 +
+            4
+    );
+    const textEditorWidth = textEditor?.width ?? autoTextEditorWidth;
+    const textEditorHeight = textEditor?.height ?? autoTextEditorHeight;
 
     return (
         <main className="relative h-screen w-screen overflow-hidden bg-slate-100 text-slate-900">
@@ -901,7 +1723,14 @@ export default function Home() {
                                     ? "bg-slate-900 text-white shadow-sm"
                                     : "text-slate-700 hover:bg-white"
                             }`}
-                            onClick={() => setTool(item.id)}
+                            onClick={() => {
+                                if (item.id !== "text") {
+                                    commitTextEditor(false);
+                                }
+                                setTool(item.id);
+                                setFillDropperActive(false);
+                                setHoverCursorClass(null);
+                            }}
                         >
                             {item.label}
                         </button>
@@ -921,9 +1750,34 @@ export default function Home() {
                             style={{ background: swatch }}
                             aria-label={`Set color ${swatch}`}
                             aria-pressed={color === swatch}
-                            onClick={() => setColor(swatch)}
+                            onClick={() => {
+                                setColor(swatch);
+                                setTextEditor((current) =>
+                                    current
+                                        ? {
+                                              ...current,
+                                              color: swatch,
+                                          }
+                                        : current
+                                );
+                            }}
                         />
                     ))}
+                </div>
+
+                <div className="flex items-center rounded-lg bg-slate-100/90 p-1">
+                    <button
+                        type="button"
+                        className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                            fillDropperActive
+                                ? "bg-slate-900 text-white shadow-sm"
+                                : "text-slate-700 hover:bg-white"
+                        }`}
+                        aria-pressed={fillDropperActive}
+                        onClick={toggleFill}
+                    >
+                        Fill
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-2 rounded-lg bg-slate-100/90 px-3 py-2">
@@ -940,9 +1794,18 @@ export default function Home() {
                         max={16}
                         value={thickness}
                         className="w-28 accent-slate-800 sm:w-36"
-                        onChange={(event) =>
-                            setThickness(Number(event.target.value))
-                        }
+                        onChange={(event) => {
+                            const nextThickness = Number(event.target.value);
+                            setThickness(nextThickness);
+                            setTextEditor((current) =>
+                                current
+                                    ? {
+                                          ...current,
+                                          thickness: nextThickness,
+                                      }
+                                    : current
+                            );
+                        }}
                     />
                     <span className="w-10 text-right text-xs font-semibold text-slate-700">
                         {thickness}px
@@ -966,6 +1829,50 @@ export default function Home() {
                 </div>
             </section>
 
+            {textEditor ? (
+                <textarea
+                    ref={textInputRef}
+                    value={textEditor.text}
+                    spellCheck={false}
+                    rows={Math.max(1, textEditorLines.length)}
+                    className="absolute z-30 resize-none bg-transparent px-0 py-0 leading-tight outline-none"
+                    style={{
+                        left: textEditor.screenX,
+                        top: textEditor.screenY,
+                        width: textEditorWidth,
+                        height: textEditorHeight,
+                        color: textEditor.color,
+                        fontSize: `${textEditorFontSize}px`,
+                        fontFamily: TEXT_FONT_FAMILY,
+                    }}
+                    onChange={(event) =>
+                        setTextEditor((current) =>
+                            current
+                                ? {
+                                      ...current,
+                                      text: event.target.value,
+                                  }
+                                : current
+                        )
+                    }
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            commitTextEditor(true);
+                            return;
+                        }
+
+                        if (event.key === "Escape") {
+                            event.preventDefault();
+                            cancelTextEditor(true);
+                        }
+                    }}
+                    onBlur={() => {
+                        commitTextEditor(false);
+                    }}
+                />
+            ) : null}
+
             <canvas
                 ref={canvasRef}
                 className={`block h-full w-full touch-none ${canvasCursorClass}`}
@@ -973,6 +1880,7 @@ export default function Home() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
+                onDoubleClick={handleDoubleClick}
             />
         </main>
     );
