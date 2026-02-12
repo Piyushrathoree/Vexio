@@ -1,5 +1,5 @@
 import React from 'react'
-import { kalam, ranchers } from '../../app/fonts';
+import { kalam, ranchers } from '../app/fonts';
 
 const Navbar = () => {
   return (

@@ -1,6 +1,6 @@
 import React from "react";
 import Badge from "./custom/badge";
-import { kalam, ranchers } from "../fonts";
+import { kalam, ranchers } from "../app/fonts";
 import { ArrowBigRight, ArrowRight, Brush, Pencil, Sparkle, SparkleIcon, Star, Stars, Users } from "lucide-react";
 import { SketchCircle, SketchStar, SketchSparkle } from "./SketchElements";
 

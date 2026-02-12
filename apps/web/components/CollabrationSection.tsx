@@ -1,7 +1,7 @@
 import React from "react";
 import { Users, Zap, MessageSquare, Eye, Layers, PenTool } from "lucide-react";
 import Badge from "./custom/badge";
-import { kalam, ranchers } from "../fonts";
+import { kalam, ranchers } from "../app/fonts";
 
 const useCases = [
     {

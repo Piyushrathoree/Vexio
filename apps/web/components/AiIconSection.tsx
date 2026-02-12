@@ -11,7 +11,7 @@ import {
     Cloud,
 } from "lucide-react";
 import Badge from "./custom/badge";
-import { kalam, ranchers } from "../fonts";
+import { kalam, ranchers } from "../app/fonts";
 
 const prompts = [
     { text: '"Minimal lightning bolt icon"', icon: "lightning" },

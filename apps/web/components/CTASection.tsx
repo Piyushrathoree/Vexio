@@ -2,7 +2,7 @@ import React from "react";
 
 import { ArrowRight, Sparkles, Users, Pencil, Stars } from "lucide-react";
 import { SketchSparkle, SketchStar, SketchCircle } from "./SketchElements";
-import { ranchers } from "../fonts";
+import { ranchers } from "../app/fonts";
 
 const CTASection = () => {
     return (

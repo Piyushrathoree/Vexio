@@ -1,6 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+    MousePointer2,
+    Hand,
+    Pencil,
+    Eraser,
+    Minus,
+    ArrowUpRight,
+    Square,
+    Circle,
+    Diamond,
+    Type,
+} from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 type Point = { x: number; y: number };
 type StrokePoint = Point & { t: number; pressure: number };
@@ -48,6 +60,7 @@ interface TextElement extends BaseElement {
     x2: number;
     y2: number;
     text: string;
+    fontFamily: string;
 }
 
 interface ActiveTextEditor {
@@ -61,6 +74,7 @@ interface ActiveTextEditor {
     text: string;
     color: string;
     thickness: number;
+    fontFamily: string;
 }
 
 type DrawingElement = ShapeElement | PenElement | TextElement;
@@ -94,17 +108,21 @@ interface PointerState {
     originElement?: DrawingElement;
 }
 
-const TOOLBAR_TOOLS: Array<{ id: Tool; label: string }> = [
-    { id: "select", label: "Select" },
-    { id: "hand", label: "Hand" },
-    { id: "pen", label: "Pen" },
-    { id: "eraser", label: "Eraser" },
-    { id: "line", label: "Line" },
-    { id: "arrow", label: "Arrow" },
-    { id: "rect", label: "Rectangle" },
-    { id: "ellipse", label: "Ellipse" },
-    { id: "diamond", label: "Diamond" },
-    { id: "text", label: "Text" },
+const TOOLBAR_TOOLS: Array<{
+    id: Tool;
+    label: string;
+    icon: React.ElementType;
+}> = [
+    { id: "select", label: "Select", icon: MousePointer2 },
+    { id: "hand", label: "Hand", icon: Hand },
+    { id: "pen", label: "Pen", icon: Pencil },
+    { id: "eraser", label: "Eraser", icon: Eraser },
+    { id: "line", label: "Line", icon: Minus },
+    { id: "arrow", label: "Arrow", icon: ArrowUpRight },
+    { id: "rect", label: "Rectangle", icon: Square },
+    { id: "ellipse", label: "Ellipse", icon: Circle },
+    { id: "diamond", label: "Diamond", icon: Diamond },
+    { id: "text", label: "Text", icon: Type },
 ];
 
 const COLOR_PALETTE = [
@@ -123,7 +141,18 @@ const RESIZE_HANDLE_HIT_RADIUS = 10;
 const TEXT_PADDING_X = 6;
 const TEXT_PADDING_Y = 4;
 const TEXT_FONT_RATIO = 0.82;
-const TEXT_FONT_FAMILY = `"Comic Sans MS", "Segoe Print", "Bradley Hand", cursive`;
+const FONT_OPTIONS = [
+    {
+        label: "Comic",
+        value: `"Comic Sans MS", "Chalkboard SE", "Comic Neue", sans-serif`,
+    },
+    { label: "Mono", value: `"Menlo", "Monaco", "Courier New", monospace` },
+    {
+        label: "Sans",
+        value: `"Inter", "Helvetica Neue", "Arial", sans-serif`,
+    },
+];
+const DEFAULT_FONT_FAMILY = FONT_OPTIONS[0]?.value ?? "sans-serif";
 
 const distance = (a: Point, b: Point): number => {
     const dx = a.x - b.x;
@@ -770,7 +799,7 @@ const drawTextElement = (
 
     ctx.save();
     ctx.fillStyle = el.color;
-    ctx.font = `${fontSize}px ${TEXT_FONT_FAMILY}`;
+    ctx.font = `${fontSize}px ${el.fontFamily}`;
     ctx.textBaseline = "top";
 
     for (let i = 0; i < lineCount; i += 1) {
@@ -901,7 +930,8 @@ const buildTextElement = (
     position: Point,
     text: string,
     color: string,
-    thickness: number
+    thickness: number,
+    fontFamily: string
 ): TextElement => {
     const { width, height } = estimateTextBounds(text, thickness);
     return {
@@ -910,6 +940,7 @@ const buildTextElement = (
         color,
         thickness,
         text,
+        fontFamily,
         x1: position.x,
         y1: position.y,
         x2: position.x + width,
@@ -933,6 +964,7 @@ export default function Home() {
     const [tool, setTool] = useState<Tool>("select");
     const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#000000");
     const [thickness, setThickness] = useState<number>(3);
+    const [fontFamily, setFontFamily] = useState<string>(DEFAULT_FONT_FAMILY);
     const [fillDropperActive, setFillDropperActive] = useState<boolean>(false);
     const [hoverCursorClass, setHoverCursorClass] = useState<string | null>(
         null
@@ -1126,9 +1158,13 @@ export default function Home() {
                 text: el.text,
                 color: el.color,
                 thickness: el.thickness,
+                fontFamily: el.fontFamily,
             });
             selectedIdRef.current = el.id;
             setSelectedId(el.id);
+            setFontFamily(el.fontFamily);
+            setThickness(el.thickness);
+            setColor(el.color);
             setHoverCursorClass(null);
             setFillDropperActive(false);
         },
@@ -1207,6 +1243,7 @@ export default function Home() {
                                 text: normalizedText,
                                 color: activeEditor.color,
                                 thickness: activeEditor.thickness,
+                                fontFamily: activeEditor.fontFamily,
                                 x1: activeEditor.x,
                                 y1: activeEditor.y,
                                 x2: activeEditor.x + nextWidth,
@@ -1222,7 +1259,8 @@ export default function Home() {
                     { x: activeEditor.x, y: activeEditor.y },
                     normalizedText,
                     activeEditor.color,
-                    activeEditor.thickness
+                    activeEditor.thickness,
+                    activeEditor.fontFamily
                 );
                 elementsRef.current = [...elementsRef.current, textElement];
                 selectedIdRef.current = textElement.id;
@@ -1318,6 +1356,7 @@ export default function Home() {
                     text: "",
                     color,
                     thickness,
+                    fontFamily,
                 });
                 return;
             }
@@ -1380,6 +1419,12 @@ export default function Home() {
                 if (target) {
                     selectedIdRef.current = target.id;
                     setSelectedId(target.id);
+                    setColor(target.color);
+                    setThickness(target.thickness);
+                    if (target.type === "text") {
+                        setFontFamily(target.fontFamily);
+                    }
+
                     pointerStateRef.current = {
                         mode: "moving",
                         pointerId: event.pointerId,
@@ -1732,7 +1777,7 @@ export default function Home() {
                                 setHoverCursorClass(null);
                             }}
                         >
-                            {item.label}
+                            <item.icon size={20} />
                         </button>
                     ))}
                 </div>
@@ -1812,6 +1857,33 @@ export default function Home() {
                     </span>
                 </div>
 
+                <div className="flex items-center gap-1 rounded-lg bg-slate-100/90 p-1">
+                    {FONT_OPTIONS.map((font) => (
+                        <button
+                            key={font.label}
+                            type="button"
+                            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                                fontFamily === font.value
+                                    ? "bg-slate-900 text-white shadow-sm"
+                                    : "text-slate-700 hover:bg-white"
+                            }`}
+                            onClick={() => {
+                                setFontFamily(font.value);
+                                setTextEditor((current) =>
+                                    current
+                                        ? {
+                                              ...current,
+                                              fontFamily: font.value,
+                                          }
+                                        : current
+                                );
+                            }}
+                        >
+                            {font.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="ml-auto">
                     <button
                         type="button"
@@ -1843,7 +1915,7 @@ export default function Home() {
                         height: textEditorHeight,
                         color: textEditor.color,
                         fontSize: `${textEditorFontSize}px`,
-                        fontFamily: TEXT_FONT_FAMILY,
+                        fontFamily: textEditor.fontFamily,
                     }}
                     onChange={(event) =>
                         setTextEditor((current) =>

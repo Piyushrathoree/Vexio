@@ -2,7 +2,7 @@ import React from "react";
 import { PenTool, Users, Sparkles, Zap } from "lucide-react";
 import { SketchUnderline } from "./SketchElements";
 import { SketchSparkle } from "./AiIconSection";
-import { ranchers } from "../fonts";
+import { ranchers } from "../app/fonts";
 
 const points = [
     { icon: PenTool, text: "Draw without limits" },
