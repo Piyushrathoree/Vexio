@@ -14,6 +14,11 @@ import {
     HelpCircle,
     Plus,
     Minus,
+    Undo,
+    Redo,
+    Bold,
+    Italic,
+    Underline,
 } from "lucide-react";
 
 import React, {
@@ -61,12 +66,16 @@ const TOOLBAR_TOOLS: Array<{
 
 const COLOR_PALETTE = [
     "#6b7280",
-    "#ef4444",
-    "#f59e0b",
-    "#10b981",
-    "#3b82f6",
-    "#9333ea",
+    "#000000",
     "#ec4899",
+    "#ef4444",
+    "#F87777",
+    "#f59e0b",
+    "#099268",
+    "#10b981",
+    "#4565E9",
+    "#4BA1F1",
+    "#9333ea",
     "#ffffff",
 ];
 
@@ -742,6 +751,11 @@ const isPointNearElement = (
         return false;
     }
 
+    if (el.points.length < 2) {
+        const p = el.points[0];
+        return p ? distance(point, p) <= threshold : false;
+    }
+
     for (let i = 0; i < el.points.length - 1; i += 1) {
         const p1 = el.points[i];
         const p2 = el.points[i + 1];
@@ -853,24 +867,141 @@ const drawTextElement = (
 
     ctx.save();
     ctx.fillStyle = getThemeAwareCanvasColor(el.color, isDark);
-    ctx.font = `${fontSize}px ${el.fontFamily}`;
+
+    // Construct font string with weight and style
+    const weight = el.fontWeight || "normal";
+    const style = el.fontStyle || "normal";
+    ctx.font = `${style} ${weight} ${fontSize}px ${el.fontFamily}`;
+
     ctx.textBaseline = "top";
 
     for (let i = 0; i < lineCount; i += 1) {
         const line = lines[i] ?? "";
         const measuredWidth = Math.max(1, ctx.measureText(line || " ").width);
         const horizontalScale = Math.min(1, contentWidth / measuredWidth);
+        const y = minY + TEXT_PADDING_Y + i * lineHeight;
+
         ctx.save();
-        ctx.translate(
-            minX + TEXT_PADDING_X,
-            minY + TEXT_PADDING_Y + i * lineHeight
-        );
+        ctx.translate(minX + TEXT_PADDING_X, y);
         ctx.scale(horizontalScale, 1);
         ctx.fillText(line, 0, 0);
+
+        // Manual underline rendering
+        if (el.textDecoration === "underline") {
+            const underlineY = fontSize * 1.1; // Slightly below text
+            ctx.beginPath();
+            ctx.moveTo(0, underlineY);
+            ctx.lineTo(measuredWidth, underlineY);
+            ctx.lineWidth = fontSize * 0.05; // Relative thickness
+            ctx.stroke();
+        }
+
         ctx.restore();
     }
 
     ctx.restore();
+    ctx.restore();
+};
+
+const drawEraserTrail = (
+    ctx: CanvasRenderingContext2D,
+    el: DrawingElement,
+    isDark: boolean
+): void => {
+    if (el.type !== "pen" || el.points.length < 2) return;
+
+    const points = el.points;
+    const tailLength = points.length;
+
+    // Calculate ribbon points
+    const leftPoints: { x: number; y: number }[] = [];
+    const rightPoints: { x: number; y: number }[] = [];
+
+    for (let i = 0; i < tailLength - 1; i++) {
+        const curr = points[i];
+        const next = points[i + 1];
+        if (!curr || !next) continue;
+
+        // Calculate direction vector
+        const dx = next.x - curr.x;
+        const dy = next.y - curr.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len === 0) continue;
+
+        // Normalized normal vector
+        const nx = -dy / len;
+        const ny = dx / len;
+
+        // Taper thickness based on index
+        const progress = i / tailLength; // 0 to near 1
+        // We want the tail (start of array?) wait.
+        // Array tracks points as they are added.
+        // points[0] is the oldest point (tail tip). points[length-1] is the newest (cursor).
+        // So points[0] should be thin (0), points[length-1] should be thick.
+
+        const thickness = Math.max(0.01, el.thickness * progress);
+        const halfWidth = thickness / 2;
+
+        leftPoints.push({
+            x: curr.x + nx * halfWidth,
+            y: curr.y + ny * halfWidth,
+        });
+        rightPoints.push({
+            x: curr.x - nx * halfWidth,
+            y: curr.y - ny * halfWidth,
+        });
+    }
+
+    // Add final point (cursor position)
+    const last = points[tailLength - 1];
+    if (last) {
+        // Use normal of last segment
+        // Or just the point itself for a sharp tip?
+        // Let's use the point itself for the very tip of the cursor
+        leftPoints.push({ x: last.x, y: last.y });
+        rightPoints.push({ x: last.x, y: last.y });
+    }
+
+    if (leftPoints.length === 0) return;
+
+    ctx.beginPath();
+    const firstPoint = leftPoints[0];
+    if (firstPoint) {
+        ctx.moveTo(firstPoint.x, firstPoint.y);
+    }
+
+    // Forward along left side
+    for (let i = 1; i < leftPoints.length; i++) {
+        const p = leftPoints[i];
+        if (p) {
+            ctx.lineTo(p.x, p.y);
+        }
+    }
+
+    // Backward along right side
+    for (let i = rightPoints.length - 1; i >= 0; i--) {
+        const p = rightPoints[i];
+        if (p) {
+            ctx.lineTo(p.x, p.y);
+        }
+    }
+
+    ctx.closePath();
+
+    ctx.fillStyle = isDark ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.2)";
+    // User requested "oklch(87% 0 0)" which is light gray.
+    // And "smooth color".
+    // Let's use a solid but slightly transparent fill to look like a trail.
+    // Or maybe a gradient?
+    // A gradient along the path is hard.
+    // Let's use the user's color if possible, or a standard trail color.
+    // The user's code had `oklch(87% 0 0)` for light mode.
+
+    if (!isDark) {
+        ctx.fillStyle = "oklch(87% 0 0)";
+    }
+
+    ctx.fill();
 };
 
 const drawElement = (
@@ -983,24 +1114,30 @@ const buildId = (): string => {
 };
 
 const buildTextElement = (
-    position: Point,
+    point: Point,
     text: string,
     color: string,
     thickness: number,
-    fontFamily: string
+    fontFamily: string,
+    fontWeight = "normal",
+    fontStyle = "normal",
+    textDecoration = "none"
 ): TextElement => {
     const { width, height } = estimateTextBounds(text, thickness);
     return {
         id: buildId(),
         type: "text",
+        x1: point.x,
+        y1: point.y,
+        x2: point.x + width,
+        y2: point.y + height,
+        text,
         color,
         thickness,
-        text,
         fontFamily,
-        x1: position.x,
-        y1: position.y,
-        x2: position.x + width,
-        y2: position.y + height,
+        fontWeight,
+        fontStyle,
+        textDecoration,
     };
 };
 
@@ -1023,19 +1160,78 @@ const getThemeServerSnapshot = () => {
     return false;
 };
 
-
-
 // Mock hook for whiteboard store
+// Mock hook for whiteboard store with history
 const useWhiteboardStore = () => {
     const [elements, setElements] = useState<DrawingElement[]>([]);
+    const [past, setPast] = useState<DrawingElement[][]>([]);
+    const [future, setFuture] = useState<DrawingElement[][]>([]);
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    useEffect(() => {
+        const saved = localStorage.getItem("whiteboard-data");
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    setElements(parsed);
+                }
+            } catch (error) {
+                console.error("Failed to load whiteboard data:", error);
+            }
+        }
+        setIsLoaded(true);
+    }, []);
+
+    useEffect(() => {
+        if (isLoaded) {
+            localStorage.setItem("whiteboard-data", JSON.stringify(elements));
+        }
+    }, [elements, isLoaded]);
+
+    const addToHistory = (newElements: DrawingElement[]) => {
+        setPast((prev) => [...prev, elements]);
+        setFuture([]);
+        setElements(newElements);
+    };
+
+    const undo = useCallback(() => {
+        setPast((prev) => {
+            if (prev.length === 0) return prev;
+            const newPast = [...prev];
+            const previousElements = newPast.pop();
+            if (previousElements) {
+                setFuture((f) => [elements, ...f]);
+                setElements(previousElements);
+            }
+            return newPast;
+        });
+    }, [elements]);
+
+    const redo = useCallback(() => {
+        setFuture((prev) => {
+            if (prev.length === 0) return prev;
+            const newFuture = [...prev];
+            const nextElements = newFuture.shift();
+            if (nextElements) {
+                setPast((p) => [...p, elements]);
+                setElements(nextElements);
+            }
+            return newFuture;
+        });
+    }, [elements]);
+
     return {
         elements,
-        addElement: (el: DrawingElement) =>
-            setElements((prev) => [...prev, el]),
+        addElement: (el: DrawingElement) => addToHistory([...elements, el]),
         updateElement: (el: DrawingElement) =>
-            setElements((prev) => prev.map((e) => (e.id === el.id ? el : e))),
+            addToHistory(elements.map((e) => (e.id === el.id ? el : e))),
         deleteElement: (id: string) =>
-            setElements((prev) => prev.filter((e) => e.id !== id)),
+            addToHistory(elements.filter((e) => e.id !== id)),
+        undo,
+        redo,
+        canUndo: past.length > 0,
+        canRedo: future.length > 0,
     };
 };
 
@@ -1051,6 +1247,10 @@ function WhiteboardCanvas() {
         addElement,
         updateElement,
         deleteElement,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
     } = useWhiteboardStore();
 
     // Fallback for missing elements
@@ -1065,6 +1265,9 @@ function WhiteboardCanvas() {
     const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#6b7280");
     const [thickness, setThickness] = useState<number>(3);
     const [fontFamily, setFontFamily] = useState<string>(DEFAULT_FONT_FAMILY);
+    const [fontWeight, setFontWeight] = useState<string>("normal");
+    const [fontStyle, setFontStyle] = useState<string>("normal");
+    const [textDecoration, setTextDecoration] = useState<string>("none");
     const [fillDropperActive, setFillDropperActive] = useState<boolean>(false);
     const [hoverCursorClass, setHoverCursorClass] = useState<string | null>(
         null
@@ -1082,14 +1285,11 @@ function WhiteboardCanvas() {
     const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
     const canvasBg = isDark ? "#171717" : "#ffffff";
 
-  
-
     const applyElementPreview = useCallback((nextElement: DrawingElement) => {
         elementsRef.current = elementsRef.current.map((element) =>
             element.id === nextElement.id ? nextElement : element
         );
     }, []);
-
 
     useEffect(() => {
         selectedIdRef.current = selectedId;
@@ -1148,7 +1348,11 @@ function WhiteboardCanvas() {
             }
 
             if (draftRef.current) {
-                drawElement(ctx, draftRef.current, isDark);
+                if (tool === "eraser") {
+                    drawEraserTrail(ctx, draftRef.current, isDark);
+                } else {
+                    drawElement(ctx, draftRef.current, isDark);
+                }
             }
 
             if (selectedIdRef.current) {
@@ -1212,12 +1416,30 @@ function WhiteboardCanvas() {
                 case "r": // Rectangle
                     setTool("rect");
                     break;
-                case "o": // Ellipse/Circle
+                case "c":
                     setTool("ellipse");
                     break;
                 case "d": // Diamond
                     setTool("diamond");
                     break;
+                case "z": {
+                    if (e.metaKey || e.ctrlKey) {
+                        if (e.shiftKey) {
+                            redo();
+                        } else {
+                            undo();
+                        }
+                        e.preventDefault();
+                    }
+                    break;
+                }
+                case "y": {
+                    if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
+                        redo();
+                        e.preventDefault();
+                    }
+                    break;
+                }
                 case "l": // Line
                     setTool("line");
                     break;
@@ -1239,7 +1461,7 @@ function WhiteboardCanvas() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [deleteElement, scheduleDraw]);
+    }, [deleteElement, scheduleDraw, undo, redo]);
 
     useEffect(() => {
         elementsRef.current = crdtElements;
@@ -1332,10 +1554,16 @@ function WhiteboardCanvas() {
                 color: el.color,
                 thickness: el.thickness,
                 fontFamily: el.fontFamily,
+                fontWeight: el.fontWeight,
+                fontStyle: el.fontStyle,
+                textDecoration: el.textDecoration,
             });
             selectedIdRef.current = el.id;
             setSelectedId(el.id);
             setFontFamily(el.fontFamily);
+            setFontWeight(el.fontWeight || "normal");
+            setFontStyle(el.fontStyle || "normal");
+            setTextDecoration(el.textDecoration || "none");
             setThickness(el.thickness);
             setColor(el.color);
             setHoverCursorClass(null);
@@ -1411,6 +1639,9 @@ function WhiteboardCanvas() {
                                 color: activeEditor.color,
                                 thickness: activeEditor.thickness,
                                 fontFamily: activeEditor.fontFamily,
+                                fontWeight: activeEditor.fontWeight,
+                                fontStyle: activeEditor.fontStyle,
+                                textDecoration: activeEditor.textDecoration,
                                 x1: activeEditor.x,
                                 y1: activeEditor.y,
                                 x2: activeEditor.x + nextWidth,
@@ -1427,7 +1658,10 @@ function WhiteboardCanvas() {
                     normalizedText,
                     activeEditor.color,
                     activeEditor.thickness,
-                    activeEditor.fontFamily
+                    activeEditor.fontFamily,
+                    activeEditor.fontWeight,
+                    activeEditor.fontStyle,
+                    activeEditor.textDecoration
                 );
                 addElement(textElement);
                 selectedIdRef.current = textElement.id;
@@ -1510,6 +1744,11 @@ function WhiteboardCanvas() {
                 const target = getElementAtPoint(world);
                 if (target?.type === "text") {
                     openTextEditorForElement(target);
+                    // Also update formatting state
+                    setFontFamily(target.fontFamily);
+                    setFontWeight(target.fontWeight || "normal");
+                    setFontStyle(target.fontStyle || "normal");
+                    setTextDecoration(target.textDecoration || "none");
                     scheduleDraw();
                     return;
                 }
@@ -1525,6 +1764,9 @@ function WhiteboardCanvas() {
                     color,
                     thickness,
                     fontFamily,
+                    fontWeight,
+                    fontStyle,
+                    textDecoration,
                 });
                 return;
             }
@@ -1548,6 +1790,14 @@ function WhiteboardCanvas() {
                     pointerId: event.pointerId,
                     lastWorld: world,
                     lastScreen: screen,
+                };
+                const initialPoint = toStrokePoint(world, event);
+                draftRef.current = {
+                    id: buildId(),
+                    type: "pen",
+                    color: "rgba(115, 115, 115, 0.5)", // Neutral-500 with opacity
+                    thickness: thickness * 2, // Thicker for eraser visualization
+                    points: [initialPoint],
                 };
                 scheduleDraw();
                 return;
@@ -1589,8 +1839,12 @@ function WhiteboardCanvas() {
                     setSelectedId(target.id);
                     setColor(target.color);
                     setThickness(target.thickness);
+                    setThickness(target.thickness);
                     if (target.type === "text") {
                         setFontFamily(target.fontFamily);
+                        setFontWeight(target.fontWeight || "normal");
+                        setFontStyle(target.fontStyle || "normal");
+                        setTextDecoration(target.textDecoration || "none");
                     }
 
                     pointerStateRef.current = {
@@ -1737,6 +1991,26 @@ function WhiteboardCanvas() {
 
             if (pointer.mode === "erasing") {
                 eraseAtPoint(world);
+
+                if (draftRef.current && draftRef.current.type === "pen") {
+                    const points = draftRef.current.points;
+                    const last = points[points.length - 1];
+                    if (last) {
+                        const nextRawPoint = toStrokePoint(world, event);
+                        const nextPoint = smoothStrokePoint(last, nextRawPoint);
+                        if (distance(last, nextPoint) >= 0.4) {
+                            let newPoints = [...points, nextPoint];
+                            if (newPoints.length > 20) {
+                                newPoints = newPoints.slice(-20);
+                            }
+                            draftRef.current = {
+                                ...draftRef.current,
+                                points: newPoints,
+                            };
+                        }
+                    }
+                }
+
                 pointerStateRef.current = {
                     ...pointer,
                     lastScreen: screen,
@@ -1845,6 +2119,10 @@ function WhiteboardCanvas() {
                 return;
             }
 
+            if (pointer.mode === "erasing") {
+                draftRef.current = null;
+            }
+
             let completedDrawing = false;
             if (pointer.mode === "drawing" && draftRef.current) {
                 const draft = draftRef.current;
@@ -1949,7 +2227,7 @@ function WhiteboardCanvas() {
             style={{ background: canvasBg }}
         >
             <section
-                className="absolute left-1/2 top-3 z-20 -translate-x-1/2 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1 py-1.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+                className="absolute left-1/2 bottom-5 z-20 -translate-x-1/2 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1 py-1.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
                 aria-label="Drawing tools"
             >
                 {TOOLBAR_TOOLS.map((item) => (
@@ -1974,21 +2252,49 @@ function WhiteboardCanvas() {
                         <item.icon size={18} strokeWidth={1.75} />
                     </button>
                 ))}
-                
+
+                <div className="mx-1 h-6 w-px bg-slate-200 dark:bg-neutral-800" />
+
+                <button
+                    type="button"
+                    title="Undo (Ctrl+Z)"
+                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-full transition ${
+                        canUndo
+                            ? "text-slate-600 hover:bg-slate-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                            : "text-slate-300 dark:text-neutral-700 cursor-not-allowed"
+                    }`}
+                    onClick={undo}
+                    disabled={!canUndo}
+                >
+                    <Undo size={18} strokeWidth={1.75} />
+                </button>
+                <button
+                    type="button"
+                    title="Redo (Ctrl+Shift+Z)"
+                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-full transition ${
+                        canRedo
+                            ? "text-slate-600 hover:bg-slate-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                            : "text-slate-300 dark:text-neutral-700 cursor-not-allowed"
+                    }`}
+                    onClick={redo}
+                    disabled={!canRedo}
+                >
+                    <Redo size={18} strokeWidth={1.75} />
+                </button>
             </section>
-            
+
             {((tool !== "select" && tool !== "hand") || selectedId) && (
                 <aside className="absolute left-3 top-[72px] z-20 w-52 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:bg-neutral-900 dark:border-neutral-800">
                     <div>
                         <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
                             Stroke
                         </span>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="grid grid-cols-4 gap-4 p-2">
                             {COLOR_PALETTE.map((swatch) => (
                                 <button
                                     key={swatch}
                                     type="button"
-                                    className={`h-6 w-6 rounded border transition hover:scale-110 ${
+                                    className={`h-6 w-6 rounded-full border transition hover:scale-110 ${
                                         color === swatch
                                             ? "border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-500/30"
                                             : "border-slate-200 dark:border-neutral-700"
@@ -1996,6 +2302,18 @@ function WhiteboardCanvas() {
                                     style={{ background: swatch }}
                                     onClick={() => {
                                         setColor(swatch);
+                                        // Update selected element if exists
+                                        if (selectedId) {
+                                            const el = elementsRef.current.find(
+                                                (e) => e.id === selectedId
+                                            );
+                                            if (el) {
+                                                updateElement({
+                                                    ...el,
+                                                    color: swatch,
+                                                });
+                                            }
+                                        }
                                         setTextEditor(
                                             (
                                                 current: ActiveTextEditor | null
@@ -2019,7 +2337,7 @@ function WhiteboardCanvas() {
                         </span>
                         <button
                             type="button"
-                            className={`rounded-md border px-3 py-1 text-xs font-medium transition ${
+                            className={`rounded-md border px-3 py-1 text-xs font-medium shadow-inner shadow-slate-200 transition ${
                                 fillDropperActive
                                     ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
                                     : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -2035,32 +2353,50 @@ function WhiteboardCanvas() {
                             Stroke width
                         </span>
                         <div className="flex items-center gap-2">
-                            <input
-                                id="thickness"
-                                type="range"
-                                min={1}
-                                max={16}
-                                value={thickness}
-                                className="h-1 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-indigo-500 dark:bg-neutral-700"
-                                onChange={(event) => {
-                                    const nextThickness = Number(
-                                        event.target.value
-                                    );
-                                    setThickness(nextThickness);
-                                    setTextEditor(
-                                        (current: ActiveTextEditor | null) =>
-                                            current
-                                                ? {
-                                                      ...current,
-                                                      thickness: nextThickness,
-                                                  }
-                                                : current
-                                    );
-                                }}
-                            />
-                            <span className="w-8 text-right text-[11px] font-medium text-slate-500 dark:text-neutral-400">
-                                {thickness}
-                            </span>
+                            {[
+                                { label: "S", value: 4 },
+                                { label: "M", value: 8 },
+                                { label: "L", value: 12 },
+                                { label: "XL", value: 18 },
+                            ].map((btn) => (
+                                <button
+                                    key={btn.value}
+                                    type="button"
+                                    className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition ${
+                                        thickness === btn.value
+                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                    }`}
+                                    onClick={() => {
+                                        setThickness(btn.value);
+                                        // Update selected element if exists
+                                        if (selectedId) {
+                                            const el = elementsRef.current.find(
+                                                (e) => e.id === selectedId
+                                            );
+                                            if (el) {
+                                                updateElement({
+                                                    ...el,
+                                                    thickness: btn.value,
+                                                });
+                                            }
+                                        }
+                                        setTextEditor(
+                                            (
+                                                current: ActiveTextEditor | null
+                                            ) =>
+                                                current
+                                                    ? {
+                                                          ...current,
+                                                          thickness: btn.value,
+                                                      }
+                                                    : current
+                                        );
+                                    }}
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
@@ -2117,6 +2453,136 @@ function WhiteboardCanvas() {
                                     </button>
                                 ))}
                             </div>
+                            <div className="mt-2  flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    className={`flex py-2 flex-1 cursor-pointer  items-center justify-center rounded-md border text-xs font-medium transition ${
+                                        fontWeight === "bold"
+                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                    }`}
+                                    onClick={() => {
+                                        const newWeight =
+                                            fontWeight === "bold"
+                                                ? "normal"
+                                                : "bold";
+                                        setFontWeight(newWeight);
+                                        setTextEditor(
+                                            (
+                                                current: ActiveTextEditor | null
+                                            ) =>
+                                                current
+                                                    ? {
+                                                          ...current,
+                                                          fontWeight: newWeight,
+                                                      }
+                                                    : current
+                                        );
+                                        const selId = selectedIdRef.current;
+                                        if (selId) {
+                                            const el = elementsRef.current.find(
+                                                (e) => e.id === selId
+                                            );
+                                            if (el && el.type === "text") {
+                                                updateElement({
+                                                    ...el,
+                                                    fontWeight: newWeight,
+                                                });
+                                            }
+                                            scheduleDraw();
+                                        }
+                                    }}
+                                    title="Bold"
+                                >
+                                    <Bold size={14} />
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`flex  flex-1 cursor-pointer py-2 items-center justify-center rounded-md border text-xs font-medium transition ${
+                                        fontStyle === "italic"
+                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                    }`}
+                                    onClick={() => {
+                                        const newStyle =
+                                            fontStyle === "italic"
+                                                ? "normal"
+                                                : "italic";
+                                        setFontStyle(newStyle);
+                                        setTextEditor(
+                                            (
+                                                current: ActiveTextEditor | null
+                                            ) =>
+                                                current
+                                                    ? {
+                                                          ...current,
+                                                          fontStyle: newStyle,
+                                                      }
+                                                    : current
+                                        );
+                                        const selId = selectedIdRef.current;
+                                        if (selId) {
+                                            const el = elementsRef.current.find(
+                                                (e) => e.id === selId
+                                            );
+                                            if (el && el.type === "text") {
+                                                updateElement({
+                                                    ...el,
+                                                    fontStyle: newStyle,
+                                                });
+                                            }
+                                            scheduleDraw();
+                                        }
+                                    }}
+                                    title="Italic"
+                                >
+                                    <Italic size={14} />
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`flex flex-1 cursor-pointer py-2 items-center justify-center rounded-md border text-xs font-medium transition ${
+                                        textDecoration === "underline"
+                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                    }`}
+                                    onClick={() => {
+                                        const newDecoration =
+                                            textDecoration === "underline"
+                                                ? "none"
+                                                : "underline";
+                                        setTextDecoration(newDecoration);
+                                        setTextEditor(
+                                            (
+                                                current: ActiveTextEditor | null
+                                            ) =>
+                                                current
+                                                    ? {
+                                                          ...current,
+                                                          textDecoration:
+                                                              newDecoration,
+                                                      }
+                                                    : current
+                                        );
+                                        const selId = selectedIdRef.current;
+                                        if (selId) {
+                                            const el = elementsRef.current.find(
+                                                (e) => e.id === selId
+                                            );
+                                            if (el && el.type === "text") {
+                                                updateElement({
+                                                    ...el,
+                                                    textDecoration:
+                                                        newDecoration,
+                                                });
+                                            }
+                                            scheduleDraw();
+                                        }
+                                    }}
+                                    title="Underline"
+                                >
+                                    <Underline size={14} />
+                                </button>
+                            </div>
                         </div>
                     )}
                 </aside>
@@ -2165,14 +2631,20 @@ function WhiteboardCanvas() {
                     style={{
                         left: textEditor.screenX,
                         top: textEditor.screenY,
-                        width: textEditorWidth,
-                        height: textEditorHeight,
+                        width: textEditor.width ?? undefined,
+                        height: textEditor.height ?? undefined,
                         color: getThemeAwareCanvasColor(
                             textEditor.color,
-                            isDark as boolean
+                            isDark
                         ),
-                        fontSize: `${textEditorFontSize}px`,
+                        fontSize: `${Math.max(
+                            1,
+                            textEditor.thickness * 5 * (zoom / 100)
+                        )}px`,
                         fontFamily: textEditor.fontFamily,
+                        fontWeight: textEditor.fontWeight,
+                        fontStyle: textEditor.fontStyle,
+                        textDecoration: textEditor.textDecoration,
                     }}
                     onChange={(event) =>
                         setTextEditor((current: ActiveTextEditor | null) =>
@@ -2201,7 +2673,7 @@ function WhiteboardCanvas() {
                     }}
                 />
             ) : null}
-            
+
             <canvas
                 ref={canvasRef}
                 className={`block h-full w-full touch-none ${canvasCursorClass}`}

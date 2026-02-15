@@ -45,6 +45,9 @@ export interface TextElement extends BaseElement {
     y2: number;
     text: string;
     fontFamily: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    textDecoration?: string;
 }
 
 export interface ActiveTextEditor {
@@ -59,6 +62,9 @@ export interface ActiveTextEditor {
     color: string;
     thickness: number;
     fontFamily: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    textDecoration?: string;
 }
 
 export type DrawingElement = ShapeElement | PenElement | TextElement;
