@@ -5,108 +5,42 @@ import {
     Hand,
     Pencil,
     Eraser,
-    Minus,
+    Minus as MinusIcon,
     ArrowUpRight,
     Square,
     Circle,
     Diamond,
     Type,
+    HelpCircle,
+    Plus,
+    Minus,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
 
-type Point = { x: number; y: number };
-type StrokePoint = Point & { t: number; pressure: number };
-type Tool =
-    | "select"
-    | "hand"
-    | "pen"
-    | "eraser"
-    | "line"
-    | "arrow"
-    | "rect"
-    | "ellipse"
-    | "diamond"
-    | "text";
+import React, {
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from "react";
 
-type ShapeType = "line" | "arrow" | "rect" | "ellipse" | "diamond";
-type FillableShapeType = "rect" | "ellipse" | "diamond";
-type DrawableType = ShapeType | "pen" | "text";
-
-interface BaseElement {
-    id: string;
-    type: DrawableType;
-    color: string;
-    thickness: number;
-}
-
-interface ShapeElement extends BaseElement {
-    type: ShapeType;
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    fill: string | null;
-}
-
-interface PenElement extends BaseElement {
-    type: "pen";
-    points: StrokePoint[];
-}
-
-interface TextElement extends BaseElement {
-    type: "text";
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    text: string;
-    fontFamily: string;
-}
-
-interface ActiveTextEditor {
-    x: number;
-    y: number;
-    screenX: number;
-    screenY: number;
-    elementId?: string;
-    width?: number;
-    height?: number;
-    text: string;
-    color: string;
-    thickness: number;
-    fontFamily: string;
-}
-
-type DrawingElement = ShapeElement | PenElement | TextElement;
-
-type PointerMode = "drawing" | "panning" | "moving" | "resizing" | "erasing";
-type ResizeHandle =
-    | "start"
-    | "end"
-    | "n"
-    | "ne"
-    | "e"
-    | "se"
-    | "s"
-    | "sw"
-    | "w"
-    | "nw";
-
-interface ResizeHandleDescriptor {
-    id: ResizeHandle;
-    point: Point;
-    cursorClass: string;
-}
-
-interface PointerState {
-    mode: PointerMode;
-    pointerId: number;
-    lastWorld: Point;
-    lastScreen: Point;
-    elementId?: string;
-    resizeHandle?: ResizeHandle;
-    originElement?: DrawingElement;
-}
+import type {
+    Point,
+    StrokePoint,
+    Tool,
+    ShapeType,
+    FillableShapeType,
+    DrawableType,
+    ShapeElement,
+    PenElement,
+    TextElement,
+    ActiveTextEditor,
+    DrawingElement,
+    PointerMode,
+    ResizeHandle,
+    ResizeHandleDescriptor,
+    PointerState,
+} from "../../lib/types";
 
 const TOOLBAR_TOOLS: Array<{
     id: Tool;
@@ -117,7 +51,7 @@ const TOOLBAR_TOOLS: Array<{
     { id: "hand", label: "Hand", icon: Hand },
     { id: "pen", label: "Pen", icon: Pencil },
     { id: "eraser", label: "Eraser", icon: Eraser },
-    { id: "line", label: "Line", icon: Minus },
+    { id: "line", label: "Line", icon: MinusIcon },
     { id: "arrow", label: "Arrow", icon: ArrowUpRight },
     { id: "rect", label: "Rectangle", icon: Square },
     { id: "ellipse", label: "Ellipse", icon: Circle },
@@ -126,7 +60,7 @@ const TOOLBAR_TOOLS: Array<{
 ];
 
 const COLOR_PALETTE = [
-    "#111827",
+    "#6b7280",
     "#ef4444",
     "#f59e0b",
     "#10b981",
@@ -135,6 +69,121 @@ const COLOR_PALETTE = [
     "#ec4899",
     "#ffffff",
 ];
+
+const DARK_CANVAS_INK = "#111827";
+const LIGHT_CANVAS_INK = "#ffffff";
+
+const normalizeHexColor = (value: string): string | null => {
+    const match = value
+        .trim()
+        .toLowerCase()
+        .match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+    if (!match) {
+        return null;
+    }
+
+    const hex = match[1];
+    if (!hex) {
+        return null;
+    }
+
+    if (hex.length === 3) {
+        return `#${hex
+            .split("")
+            .map((part) => `${part}${part}`)
+            .join("")}`;
+    }
+
+    return `#${hex}`;
+};
+
+const parseRgbColor = (
+    value: string
+): { r: number; g: number; b: number; a?: number } | null => {
+    const match = value
+        .trim()
+        .toLowerCase()
+        .match(
+            /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([01](?:\.\d+)?|0?\.\d+))?\s*\)$/
+        );
+
+    if (!match) {
+        return null;
+    }
+
+    const r = Number(match[1]);
+    const g = Number(match[2]);
+    const b = Number(match[3]);
+    const alphaRaw = match[4];
+
+    if (
+        Number.isNaN(r) ||
+        Number.isNaN(g) ||
+        Number.isNaN(b) ||
+        r < 0 ||
+        r > 255 ||
+        g < 0 ||
+        g > 255 ||
+        b < 0 ||
+        b > 255
+    ) {
+        return null;
+    }
+
+    if (alphaRaw === undefined) {
+        return { r, g, b };
+    }
+
+    const a = Number(alphaRaw);
+    if (Number.isNaN(a) || a < 0 || a > 1) {
+        return null;
+    }
+
+    return { r, g, b, a };
+};
+
+const getThemeAwareCanvasColor = (color: string, isDark: boolean): string => {
+    const normalizedHex = normalizeHexColor(color);
+
+    if (normalizedHex) {
+        const isDarkInkHex =
+            normalizedHex === DARK_CANVAS_INK || normalizedHex === "#000000";
+
+        if (isDark && isDarkInkHex) {
+            return LIGHT_CANVAS_INK;
+        }
+
+        if (!isDark && normalizedHex === LIGHT_CANVAS_INK) {
+            return DARK_CANVAS_INK;
+        }
+
+        return color;
+    }
+
+    const rgb = parseRgbColor(color);
+    if (!rgb) {
+        return color;
+    }
+
+    const isDarkInkRgb =
+        (rgb.r === 17 && rgb.g === 24 && rgb.b === 39) ||
+        (rgb.r === 0 && rgb.g === 0 && rgb.b === 0);
+    const isLightInkRgb = rgb.r === 255 && rgb.g === 255 && rgb.b === 255;
+
+    if (isDark && isDarkInkRgb) {
+        return rgb.a === undefined
+            ? LIGHT_CANVAS_INK
+            : `rgba(255, 255, 255, ${rgb.a})`;
+    }
+
+    if (!isDark && isLightInkRgb) {
+        return rgb.a === undefined
+            ? DARK_CANVAS_INK
+            : `rgba(17, 24, 39, ${rgb.a})`;
+    }
+
+    return color;
+};
 
 const FILL_ALPHA = 0.2;
 const RESIZE_HANDLE_HIT_RADIUS = 10;
@@ -481,7 +530,7 @@ const scaleElementToBounds = (
     if (el.type === "pen") {
         return {
             ...el,
-            points: el.points.map((point) => ({
+            points: el.points.map((point: StrokePoint) => ({
                 ...point,
                 x: mapX(point.x),
                 y: mapY(point.y),
@@ -705,7 +754,11 @@ const isPointNearElement = (
     return false;
 };
 
-const drawShape = (ctx: CanvasRenderingContext2D, el: ShapeElement): void => {
+const drawShape = (
+    ctx: CanvasRenderingContext2D,
+    el: ShapeElement,
+    isDark: boolean
+): void => {
     ctx.beginPath();
 
     switch (el.type) {
@@ -774,7 +827,7 @@ const drawShape = (ctx: CanvasRenderingContext2D, el: ShapeElement): void => {
     }
 
     if (el.fill && isFillableShapeType(el.type)) {
-        ctx.fillStyle = el.fill;
+        ctx.fillStyle = getThemeAwareCanvasColor(el.fill, isDark);
         ctx.fill();
     }
 
@@ -783,7 +836,8 @@ const drawShape = (ctx: CanvasRenderingContext2D, el: ShapeElement): void => {
 
 const drawTextElement = (
     ctx: CanvasRenderingContext2D,
-    el: TextElement
+    el: TextElement,
+    isDark: boolean
 ): void => {
     const { minX, minY, width, height } = normalizeRect(el);
     if (width < 2 || height < 2) {
@@ -798,7 +852,7 @@ const drawTextElement = (
     const fontSize = Math.max(10, lineHeight * TEXT_FONT_RATIO);
 
     ctx.save();
-    ctx.fillStyle = el.color;
+    ctx.fillStyle = getThemeAwareCanvasColor(el.color, isDark);
     ctx.font = `${fontSize}px ${el.fontFamily}`;
     ctx.textBaseline = "top";
 
@@ -821,14 +875,16 @@ const drawTextElement = (
 
 const drawElement = (
     ctx: CanvasRenderingContext2D,
-    el: DrawingElement
+    el: DrawingElement,
+    isDark: boolean
 ): void => {
-    ctx.strokeStyle = el.color;
+    const strokeColor = getThemeAwareCanvasColor(el.color, isDark);
+    ctx.strokeStyle = strokeColor;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
     if (el.type === "text") {
-        drawTextElement(ctx, el);
+        drawTextElement(ctx, el, isDark);
         return;
     }
 
@@ -841,7 +897,7 @@ const drawElement = (
             const point = el.points[0];
             if (!point) return;
             ctx.beginPath();
-            ctx.fillStyle = el.color;
+            ctx.fillStyle = strokeColor;
             ctx.arc(
                 point.x,
                 point.y,
@@ -890,7 +946,7 @@ const drawElement = (
     }
 
     ctx.lineWidth = el.thickness;
-    drawShape(ctx, el);
+    drawShape(ctx, el, isDark);
 };
 
 const moveElement = (
@@ -901,7 +957,7 @@ const moveElement = (
     if (el.type === "pen") {
         return {
             ...el,
-            points: el.points.map((p) => ({
+            points: el.points.map((p: StrokePoint) => ({
                 ...p,
                 x: p.x + deltaX,
                 y: p.y + deltaY,
@@ -950,19 +1006,63 @@ const buildTextElement = (
 
 const minDrawableSize = 2;
 
-export default function Home() {
+const subscribeToTheme = (callback: () => void) => {
+    const observer = new MutationObserver(callback);
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+};
+
+const getThemeSnapshot = () => {
+    return document.documentElement.classList.contains("dark");
+};
+
+const getThemeServerSnapshot = () => {
+    return false;
+};
+
+
+
+// Mock hook for whiteboard store
+const useWhiteboardStore = () => {
+    const [elements, setElements] = useState<DrawingElement[]>([]);
+    return {
+        elements,
+        addElement: (el: DrawingElement) =>
+            setElements((prev) => [...prev, el]),
+        updateElement: (el: DrawingElement) =>
+            setElements((prev) => prev.map((e) => (e.id === el.id ? el : e))),
+        deleteElement: (id: string) =>
+            setElements((prev) => prev.filter((e) => e.id !== id)),
+    };
+};
+
+function WhiteboardCanvas() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const textInputRef = useRef<HTMLTextAreaElement | null>(null);
     const rafRef = useRef<number | null>(null);
     const panRef = useRef<Point>({ x: 0, y: 0 });
     const elementsRef = useRef<DrawingElement[]>([]);
+
+    const {
+        elements: crdtElements,
+        addElement,
+        updateElement,
+        deleteElement,
+    } = useWhiteboardStore();
+
+    // Fallback for missing elements
+    const elements = crdtElements || [];
+
     const draftRef = useRef<DrawingElement | null>(null);
     const pointerStateRef = useRef<PointerState | null>(null);
     const selectedIdRef = useRef<string | null>(null);
     const textEditorRef = useRef<ActiveTextEditor | null>(null);
 
     const [tool, setTool] = useState<Tool>("select");
-    const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#000000");
+    const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#6b7280");
     const [thickness, setThickness] = useState<number>(3);
     const [fontFamily, setFontFamily] = useState<string>(DEFAULT_FONT_FAMILY);
     const [fillDropperActive, setFillDropperActive] = useState<boolean>(false);
@@ -971,6 +1071,25 @@ export default function Home() {
     );
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [textEditor, setTextEditor] = useState<ActiveTextEditor | null>(null);
+
+    const isDark = useSyncExternalStore(
+        subscribeToTheme,
+        getThemeSnapshot,
+        getThemeServerSnapshot
+    );
+
+    const [zoom, setZoom] = useState(100);
+    const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
+    const canvasBg = isDark ? "#171717" : "#ffffff";
+
+  
+
+    const applyElementPreview = useCallback((nextElement: DrawingElement) => {
+        elementsRef.current = elementsRef.current.map((element) =>
+            element.id === nextElement.id ? nextElement : element
+        );
+    }, []);
+
 
     useEffect(() => {
         selectedIdRef.current = selectedId;
@@ -1011,39 +1130,25 @@ export default function Home() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx.fillStyle = "#f6f7fb";
-            ctx.fillRect(0, 0, rect.width, rect.height);
-
-            const grid = 24;
-            const pan = panRef.current;
-            const offsetX = ((pan.x % grid) + grid) % grid;
-            const offsetY = ((pan.y % grid) + grid) % grid;
-            ctx.strokeStyle = "rgba(15, 23, 42, 0.08)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            for (let x = offsetX; x <= rect.width; x += grid) {
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, rect.height);
-            }
-            for (let y = offsetY; y <= rect.height; y += grid) {
-                ctx.moveTo(0, y);
-                ctx.lineTo(rect.width, y);
-            }
-            ctx.stroke();
+            ctx.scale(zoom / 100, zoom / 100);
+            ctx.fillStyle = canvasBg;
+            const scale = zoom / 100;
+            ctx.fillRect(0, 0, rect.width / scale, rect.height / scale);
 
             ctx.save();
-            ctx.translate(pan.x, pan.y);
+            const currentPan = panRef.current;
+            ctx.translate(currentPan.x, currentPan.y);
             const editingElementId = textEditorRef.current?.elementId ?? null;
 
             for (const el of elementsRef.current) {
                 if (editingElementId && el.id === editingElementId) {
                     continue;
                 }
-                drawElement(ctx, el);
+                drawElement(ctx, el, isDark);
             }
 
             if (draftRef.current) {
-                drawElement(ctx, draftRef.current);
+                drawElement(ctx, draftRef.current, isDark);
             }
 
             if (selectedIdRef.current) {
@@ -1072,7 +1177,74 @@ export default function Home() {
 
             ctx.restore();
         });
-    }, []);
+    }, [zoom, canvasBg, isDark]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ignore if typing in an input or textarea (except our canvas text editor handled separately or if manually focused)
+            // But if textEditor is active, we might want to let it handle keys.
+            if (
+                e.target instanceof HTMLInputElement ||
+                e.target instanceof HTMLTextAreaElement ||
+                (e.target instanceof HTMLDivElement &&
+                    e.target.isContentEditable)
+            ) {
+                return;
+            }
+
+            switch (e.key.toLowerCase()) {
+                case "v":
+                case "1": // Excalidraw often uses numbers too, but let's stick to letters or common standards
+                    setTool("select");
+                    break;
+                case "h":
+                    setTool("hand");
+                    break;
+                case "p":
+                    setTool("pen");
+                    break;
+                case "e":
+                    setTool("eraser");
+                    break;
+                case "t":
+                    setTool("text");
+                    break;
+                case "r": // Rectangle
+                    setTool("rect");
+                    break;
+                case "o": // Ellipse/Circle
+                    setTool("ellipse");
+                    break;
+                case "d": // Diamond
+                    setTool("diamond");
+                    break;
+                case "l": // Line
+                    setTool("line");
+                    break;
+                case "a": // Arrow
+                    setTool("arrow");
+                    break;
+                case "backspace":
+                case "delete": {
+                    if (selectedIdRef.current) {
+                        deleteElement(selectedIdRef.current);
+                        selectedIdRef.current = null;
+                        setSelectedId(null);
+                        scheduleDraw();
+                    }
+                    break;
+                }
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [deleteElement, scheduleDraw]);
+
+    useEffect(() => {
+        elementsRef.current = crdtElements;
+        scheduleDraw();
+    }, [crdtElements, scheduleDraw]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -1106,13 +1278,14 @@ export default function Home() {
                 x: event.clientX - rect.left,
                 y: event.clientY - rect.top,
             };
+            const scale = zoom / 100;
             const world = {
-                x: screen.x - panRef.current.x,
-                y: screen.y - panRef.current.y,
+                x: screen.x / scale - panRef.current.x,
+                y: screen.y / scale - panRef.current.y,
             };
             return { world, screen };
         },
-        []
+        [zoom]
     );
 
     const getElementAtPoint = useCallback(
@@ -1182,16 +1355,16 @@ export default function Home() {
                 return;
             }
 
-            const next = [...elementsRef.current];
-            const [removed] = next.splice(index, 1);
-            elementsRef.current = next;
+            const removed = elementsRef.current[index];
+            if (!removed) return;
+            deleteElement(removed.id);
 
             if (removed && removed.id === selectedIdRef.current) {
                 selectedIdRef.current = null;
                 setSelectedId(null);
             }
         },
-        [setSelectedId]
+        [deleteElement, setSelectedId]
     );
 
     const commitTextEditor = useCallback(
@@ -1215,9 +1388,7 @@ export default function Home() {
 
                 if (existingElement?.type === "text") {
                     if (!hasText) {
-                        elementsRef.current = elementsRef.current.filter(
-                            (el) => el.id !== activeEditor.elementId
-                        );
+                        deleteElement(activeEditor.elementId);
                         if (selectedIdRef.current === activeEditor.elementId) {
                             selectedIdRef.current = null;
                             setSelectedId(null);
@@ -1230,16 +1401,12 @@ export default function Home() {
                             activeEditor.height ??
                             Math.abs(existingElement.y2 - existingElement.y1);
 
-                        elementsRef.current = elementsRef.current.map((el) => {
-                            if (
-                                el.id !== activeEditor.elementId ||
-                                el.type !== "text"
-                            ) {
-                                return el;
-                            }
-
-                            return {
-                                ...el,
+                        const existing = elementsRef.current.find(
+                            (el) => el.id === activeEditor.elementId
+                        );
+                        if (existing && existing.type === "text") {
+                            updateElement({
+                                ...existing,
                                 text: normalizedText,
                                 color: activeEditor.color,
                                 thickness: activeEditor.thickness,
@@ -1248,8 +1415,8 @@ export default function Home() {
                                 y1: activeEditor.y,
                                 x2: activeEditor.x + nextWidth,
                                 y2: activeEditor.y + nextHeight,
-                            };
-                        });
+                            });
+                        }
                         selectedIdRef.current = activeEditor.elementId;
                         setSelectedId(activeEditor.elementId);
                     }
@@ -1262,7 +1429,7 @@ export default function Home() {
                     activeEditor.thickness,
                     activeEditor.fontFamily
                 );
-                elementsRef.current = [...elementsRef.current, textElement];
+                addElement(textElement);
                 selectedIdRef.current = textElement.id;
                 setSelectedId(textElement.id);
             }
@@ -1274,7 +1441,7 @@ export default function Home() {
             }
             scheduleDraw();
         },
-        [scheduleDraw]
+        [scheduleDraw, addElement, updateElement, deleteElement]
     );
 
     const cancelTextEditor = useCallback(
@@ -1306,6 +1473,7 @@ export default function Home() {
 
     const handlePointerDown = useCallback(
         (event: React.PointerEvent<HTMLCanvasElement>) => {
+            // Removed commentMode check
             event.preventDefault();
             const canvas = event.currentTarget;
             const { world, screen } = getPoints(event);
@@ -1318,12 +1486,12 @@ export default function Home() {
                 const target = getElementAtPoint(world);
                 if (target && isFillableShape(target)) {
                     const fillColor = toFillColor(color, FILL_ALPHA);
-                    elementsRef.current = elementsRef.current.map((el) => {
-                        if (el.id === target.id && isFillableShape(el)) {
-                            return { ...el, fill: fillColor };
-                        }
-                        return el;
-                    });
+                    const updatedTarget = elementsRef.current.find(
+                        (el) => el.id === target.id
+                    );
+                    if (updatedTarget && isFillableShape(updatedTarget)) {
+                        updateElement({ ...updatedTarget, fill: fillColor });
+                    }
                     selectedIdRef.current = target.id;
                     setSelectedId(target.id);
                     setFillDropperActive(false);
@@ -1484,6 +1652,7 @@ export default function Home() {
             commitTextEditor,
             eraseAtPoint,
             fillDropperActive,
+            fontFamily,
             getElementAtPoint,
             getPoints,
             openTextEditorForElement,
@@ -1491,6 +1660,8 @@ export default function Home() {
             startTextEditor,
             thickness,
             tool,
+            updateElement,
+            zoom,
         ]
     );
 
@@ -1549,10 +1720,12 @@ export default function Home() {
             }
 
             if (pointer.mode === "panning") {
-                panRef.current = {
+                const newPan = {
                     x: panRef.current.x + (screen.x - pointer.lastScreen.x),
                     y: panRef.current.y + (screen.y - pointer.lastScreen.y),
                 };
+                panRef.current = newPan;
+                setPan(newPan);
                 pointerStateRef.current = {
                     ...pointer,
                     lastScreen: screen,
@@ -1584,9 +1757,7 @@ export default function Home() {
                     pointer.resizeHandle,
                     world
                 );
-                elementsRef.current = elementsRef.current.map((el) =>
-                    el.id === pointer.elementId ? resizedElement : el
-                );
+                applyElementPreview(resizedElement);
                 pointerStateRef.current = {
                     ...pointer,
                     lastWorld: world,
@@ -1601,11 +1772,12 @@ export default function Home() {
                 const dy = world.y - pointer.lastWorld.y;
 
                 if (dx !== 0 || dy !== 0) {
-                    elementsRef.current = elementsRef.current.map((el) =>
-                        el.id === pointer.elementId
-                            ? moveElement(el, dx, dy)
-                            : el
+                    const movedEl = elementsRef.current.find(
+                        (el) => el.id === pointer.elementId
                     );
+                    if (movedEl) {
+                        applyElementPreview(moveElement(movedEl, dx, dy));
+                    }
                     pointerStateRef.current = {
                         ...pointer,
                         lastWorld: world,
@@ -1656,7 +1828,14 @@ export default function Home() {
             };
             scheduleDraw();
         },
-        [eraseAtPoint, fillDropperActive, getPoints, scheduleDraw, tool]
+        [
+            eraseAtPoint,
+            fillDropperActive,
+            getPoints,
+            applyElementPreview,
+            scheduleDraw,
+            tool,
+        ]
     );
 
     const handlePointerUp = useCallback(
@@ -1672,18 +1851,30 @@ export default function Home() {
 
                 if (draft.type === "pen") {
                     if (draft.points.length > 0) {
-                        elementsRef.current = [...elementsRef.current, draft];
+                        addElement(draft);
                     }
                 } else {
                     const width = Math.abs(draft.x2 - draft.x1);
                     const height = Math.abs(draft.y2 - draft.y1);
                     if (width >= minDrawableSize || height >= minDrawableSize) {
-                        elementsRef.current = [...elementsRef.current, draft];
+                        addElement(draft);
                         completedDrawing = true;
                     }
                 }
 
                 draftRef.current = null;
+            }
+
+            if (
+                (pointer.mode === "moving" || pointer.mode === "resizing") &&
+                pointer.elementId
+            ) {
+                const finalizedElement = elementsRef.current.find(
+                    (element) => element.id === pointer.elementId
+                );
+                if (finalizedElement) {
+                    updateElement(finalizedElement);
+                }
             }
 
             if (completedDrawing) {
@@ -1698,17 +1889,17 @@ export default function Home() {
 
             try {
                 event.currentTarget.releasePointerCapture(event.pointerId);
-            } catch {
-                // Ignore if pointer capture has already been released.
-            }
+            } catch {}
 
             scheduleDraw();
         },
-        [scheduleDraw, tool]
+        [scheduleDraw, tool, addElement, updateElement]
     );
 
     const clearCanvas = useCallback(() => {
-        elementsRef.current = [];
+        for (const el of elementsRef.current) {
+            deleteElement(el.id);
+        }
         draftRef.current = null;
         pointerStateRef.current = null;
         selectedIdRef.current = null;
@@ -1717,7 +1908,7 @@ export default function Home() {
         setHoverCursorClass(null);
         setSelectedId(null);
         scheduleDraw();
-    }, [scheduleDraw]);
+    }, [scheduleDraw, deleteElement]);
 
     const canvasCursorClass =
         tool === "hand"
@@ -1753,154 +1944,217 @@ export default function Home() {
     const textEditorHeight = textEditor?.height ?? autoTextEditorHeight;
 
     return (
-        <main className="relative h-screen w-screen overflow-hidden bg-slate-100 text-slate-900">
+        <main
+            className="relative h-screen w-screen overflow-hidden text-slate-900 dark:text-neutral-100"
+            style={{ background: canvasBg }}
+        >
             <section
-                className="absolute inset-x-3 top-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-slate-300/80 bg-white/90 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/75"
-                aria-label="Drawing controls"
+                className="absolute left-1/2 top-3 z-20 -translate-x-1/2 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1 py-1.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+                aria-label="Drawing tools"
             >
-                <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-100/90 p-1">
-                    {TOOLBAR_TOOLS.map((item) => (
-                        <button
-                            key={item.id}
-                            type="button"
-                            className={`rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide transition ${
-                                tool === item.id
-                                    ? "bg-slate-900 text-white shadow-sm"
-                                    : "text-slate-700 hover:bg-white"
-                            }`}
-                            onClick={() => {
-                                if (item.id !== "text") {
-                                    commitTextEditor(false);
-                                }
-                                setTool(item.id);
-                                setFillDropperActive(false);
-                                setHoverCursorClass(null);
-                            }}
-                        >
-                            <item.icon size={20} />
-                        </button>
-                    ))}
-                </div>
-
-                <div className="flex items-center gap-1 rounded-lg bg-slate-100/90 p-1">
-                    {COLOR_PALETTE.map((swatch) => (
-                        <button
-                            key={swatch}
-                            type="button"
-                            className={`h-7 w-7 rounded-full border-2 transition hover:scale-105 ${
-                                color === swatch
-                                    ? "border-slate-900 ring-2 ring-slate-300"
-                                    : "border-white/80"
-                            }`}
-                            style={{ background: swatch }}
-                            aria-label={`Set color ${swatch}`}
-                            aria-pressed={color === swatch}
-                            onClick={() => {
-                                setColor(swatch);
-                                setTextEditor((current) =>
-                                    current
-                                        ? {
-                                              ...current,
-                                              color: swatch,
-                                          }
-                                        : current
-                                );
-                            }}
-                        />
-                    ))}
-                </div>
-
-                <div className="flex items-center rounded-lg bg-slate-100/90 p-1">
+                {TOOLBAR_TOOLS.map((item) => (
                     <button
+                        key={item.id}
                         type="button"
-                        className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                            fillDropperActive
-                                ? "bg-slate-900 text-white shadow-sm"
-                                : "text-slate-700 hover:bg-white"
+                        title={item.label}
+                        className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-full transition ${
+                            tool === item.id
+                                ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                : "text-slate-600 hover:bg-slate-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
                         }`}
-                        aria-pressed={fillDropperActive}
-                        onClick={toggleFill}
-                    >
-                        Fill
-                    </button>
-                </div>
-
-                <div className="flex items-center gap-2 rounded-lg bg-slate-100/90 px-3 py-2">
-                    <label
-                        htmlFor="thickness"
-                        className="text-xs font-semibold text-slate-700"
-                    >
-                        Thickness
-                    </label>
-                    <input
-                        id="thickness"
-                        type="range"
-                        min={1}
-                        max={16}
-                        value={thickness}
-                        className="w-28 accent-slate-800 sm:w-36"
-                        onChange={(event) => {
-                            const nextThickness = Number(event.target.value);
-                            setThickness(nextThickness);
-                            setTextEditor((current) =>
-                                current
-                                    ? {
-                                          ...current,
-                                          thickness: nextThickness,
-                                      }
-                                    : current
-                            );
+                        onClick={() => {
+                            if (item.id !== "text") {
+                                commitTextEditor(false);
+                            }
+                            setTool(item.id);
+                            setFillDropperActive(false);
+                            setHoverCursorClass(null);
                         }}
-                    />
-                    <span className="w-10 text-right text-xs font-semibold text-slate-700">
-                        {thickness}px
-                    </span>
-                </div>
-
-                <div className="flex items-center gap-1 rounded-lg bg-slate-100/90 p-1">
-                    {FONT_OPTIONS.map((font) => (
-                        <button
-                            key={font.label}
-                            type="button"
-                            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                                fontFamily === font.value
-                                    ? "bg-slate-900 text-white shadow-sm"
-                                    : "text-slate-700 hover:bg-white"
-                            }`}
-                            onClick={() => {
-                                setFontFamily(font.value);
-                                setTextEditor((current) =>
-                                    current
-                                        ? {
-                                              ...current,
-                                              fontFamily: font.value,
-                                          }
-                                        : current
-                                );
-                            }}
-                        >
-                            {font.label}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="ml-auto">
-                    <button
-                        type="button"
-                        className="rounded-md bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-600"
-                        onClick={clearCanvas}
                     >
-                        Clear
+                        <item.icon size={18} strokeWidth={1.75} />
                     </button>
-                </div>
-
-                <div className="rounded-lg bg-slate-100/90 px-3 py-1.5 text-xs font-medium text-slate-600">
-                    <span className="font-mono">
-                        Selected: {selectedId ? selectedId.slice(0, 8) : "none"}
-                    </span>
-                </div>
+                ))}
+                
             </section>
+            
+            {((tool !== "select" && tool !== "hand") || selectedId) && (
+                <aside className="absolute left-3 top-[72px] z-20 w-52 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:bg-neutral-900 dark:border-neutral-800">
+                    <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                            Stroke
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                            {COLOR_PALETTE.map((swatch) => (
+                                <button
+                                    key={swatch}
+                                    type="button"
+                                    className={`h-6 w-6 rounded border transition hover:scale-110 ${
+                                        color === swatch
+                                            ? "border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-500/30"
+                                            : "border-slate-200 dark:border-neutral-700"
+                                    }`}
+                                    style={{ background: swatch }}
+                                    onClick={() => {
+                                        setColor(swatch);
+                                        setTextEditor(
+                                            (
+                                                current: ActiveTextEditor | null
+                                            ) =>
+                                                current
+                                                    ? {
+                                                          ...current,
+                                                          color: swatch,
+                                                      }
+                                                    : current
+                                        );
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    </div>
 
+                    <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                            Background
+                        </span>
+                        <button
+                            type="button"
+                            className={`rounded-md border px-3 py-1 text-xs font-medium transition ${
+                                fillDropperActive
+                                    ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                    : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                            }`}
+                            onClick={toggleFill}
+                        >
+                            {fillDropperActive ? "Click shape to fill" : "Fill"}
+                        </button>
+                    </div>
+
+                    <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                            Stroke width
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <input
+                                id="thickness"
+                                type="range"
+                                min={1}
+                                max={16}
+                                value={thickness}
+                                className="h-1 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-indigo-500 dark:bg-neutral-700"
+                                onChange={(event) => {
+                                    const nextThickness = Number(
+                                        event.target.value
+                                    );
+                                    setThickness(nextThickness);
+                                    setTextEditor(
+                                        (current: ActiveTextEditor | null) =>
+                                            current
+                                                ? {
+                                                      ...current,
+                                                      thickness: nextThickness,
+                                                  }
+                                                : current
+                                    );
+                                }}
+                            />
+                            <span className="w-8 text-right text-[11px] font-medium text-slate-500 dark:text-neutral-400">
+                                {thickness}
+                            </span>
+                        </div>
+                    </div>
+
+                    {(tool === "text" ||
+                        (selectedId &&
+                            elementsRef.current.find(
+                                (el) => el.id === selectedId
+                            )?.type === "text")) && (
+                        <div>
+                            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                                Font family
+                            </span>
+                            <div className="flex flex-col gap-1">
+                                {FONT_OPTIONS.map((font) => (
+                                    <button
+                                        key={font.label}
+                                        type="button"
+                                        className={`rounded-md px-2.5 py-1 text-left text-xs font-medium transition ${
+                                            fontFamily === font.value
+                                                ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                                : "text-slate-600 hover:bg-slate-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                        }`}
+                                        onClick={() => {
+                                            setFontFamily(font.value);
+                                            setTextEditor(
+                                                (
+                                                    current: ActiveTextEditor | null
+                                                ) =>
+                                                    current
+                                                        ? {
+                                                              ...current,
+                                                              fontFamily:
+                                                                  font.value,
+                                                          }
+                                                        : current
+                                            );
+                                            const selId = selectedIdRef.current;
+                                            if (selId) {
+                                                const el =
+                                                    elementsRef.current.find(
+                                                        (e) => e.id === selId
+                                                    );
+                                                if (el && el.type === "text") {
+                                                    updateElement({
+                                                        ...el,
+                                                        fontFamily: font.value,
+                                                    });
+                                                }
+                                                scheduleDraw();
+                                            }
+                                        }}
+                                    >
+                                        {font.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </aside>
+            )}
+            <div className="absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+                <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-l-lg text-slate-600 transition hover:bg-slate-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    onClick={() => setZoom((z) => Math.max(10, z - 10))}
+                    aria-label="Zoom out"
+                >
+                    <Minus size={16} />
+                </button>
+                <button
+                    type="button"
+                    className="flex h-8 min-w-[52px] items-center justify-center border-x border-slate-200 px-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    onClick={() => setZoom(100)}
+                >
+                    {zoom}%
+                </button>
+                <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-r-lg text-slate-600 transition hover:bg-slate-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    onClick={() => setZoom((z) => Math.min(500, z + 10))}
+                    aria-label="Zoom in"
+                >
+                    <Plus size={16} />
+                </button>
+            </div>
+            <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2">
+                <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-indigo-500 shadow-sm transition hover:bg-slate-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-indigo-300 dark:hover:bg-neutral-800"
+                    aria-label="Help"
+                >
+                    <HelpCircle size={18} />
+                </button>
+            </div>
             {textEditor ? (
                 <textarea
                     ref={textInputRef}
@@ -1913,12 +2167,15 @@ export default function Home() {
                         top: textEditor.screenY,
                         width: textEditorWidth,
                         height: textEditorHeight,
-                        color: textEditor.color,
+                        color: getThemeAwareCanvasColor(
+                            textEditor.color,
+                            isDark as boolean
+                        ),
                         fontSize: `${textEditorFontSize}px`,
                         fontFamily: textEditor.fontFamily,
                     }}
                     onChange={(event) =>
-                        setTextEditor((current) =>
+                        setTextEditor((current: ActiveTextEditor | null) =>
                             current
                                 ? {
                                       ...current,
@@ -1944,7 +2201,7 @@ export default function Home() {
                     }}
                 />
             ) : null}
-
+            
             <canvas
                 ref={canvasRef}
                 className={`block h-full w-full touch-none ${canvasCursorClass}`}
@@ -1956,4 +2213,8 @@ export default function Home() {
             />
         </main>
     );
+}
+
+export default function Home() {
+    return <WhiteboardCanvas />;
 }
