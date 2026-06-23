@@ -1,4 +1,5 @@
 import React from 'react'
+import Link from 'next/link'
 import { kalam, ranchers } from '../app/fonts';
 
 const Navbar = () => {
@@ -15,6 +16,14 @@ const Navbar = () => {
               </a>
 
               <ul className="md:flex hidden items-center gap-10 ml-30">
+                  <li>
+                      <Link
+                          href="/rooms"
+                          className="hover:underline inset-1.5 transition"
+                      >
+                          Rooms
+                      </Link>
+                  </li>
                   <li>
                       <a
                           className="hover:underline inset-1.5  transition"
@@ -50,18 +59,18 @@ const Navbar = () => {
               </ul>
 
               <div className="flex gap-1 items-center ">
-                  <button
-                      type="button"
-                      className="bg-white text-gray-600 md:inline hidden text-sm hover:bg-gray-50 active:scale-95 transition-all w-25 h-9 rounded-lg"
+                  <Link
+                      href="/login"
+                      className="bg-white text-gray-600 md:inline hidden text-sm hover:bg-gray-50 active:scale-95 transition-all w-25 h-9 rounded-lg flex items-center justify-center"
                   >
                       Sign In
-                  </button>
-                  <button
-                      type="button"
-                      className="bg-white text-gray-600 border border-gray-300 md:inline hidden text-sm hover:bg-gray-50 active:scale-95 transition-all w-25 h-9 rounded-lg"
+                  </Link>
+                  <Link
+                      href="/signup"
+                      className="bg-white text-gray-600 border border-gray-300 md:inline hidden text-sm hover:bg-gray-50 active:scale-95 transition-all w-25 h-9 rounded-lg flex items-center justify-center"
                   >
                       Start Free
-                  </button>
+                  </Link>
               </div>
               <button
                   aria-label="menu-btn"

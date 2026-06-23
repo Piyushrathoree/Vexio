@@ -1,15 +1,27 @@
-import { JWT_SECRET, jwt } from "@repo/common";
+import { auth } from "@repo/auth";
 
-const verifyUser = (token: string): string | null => {
+const verifyUser = async (token: string): Promise<string | null> => {
     if (!token) {
         return null;
     }
-    const decoded = jwt.verify(token, JWT_SECRET!);
-    if (!decoded || typeof decoded !== "object") {
+
+    try {
+        const session = await auth.api.getSession({
+            headers: new Headers({
+                Authorization: `Bearer ${token}`,
+            }),
+        });
+
+        if (!session?.user?.id) {
+            console.log("[Vexio:WS] auth failed — invalid bearer token");
+            return null;
+        }
+
+        return session.user.id;
+    } catch (err) {
+        console.error("[Vexio:WS] auth error", err);
         return null;
     }
-
-    return decoded.userId;
 };
 
-export default verifyUser
+export default verifyUser;

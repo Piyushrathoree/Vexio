@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -14,14 +8,64 @@ datasource db {
 }
 
 model User {
-  id       String @id @unique @default(uuid())
-  name     String
-  email    String @unique
-  password String
-  chats    Chat[] // one user can have multiple chats 
-  rooms    Room[] @relation("admin")
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  chats         Chat[]
+  rooms         Room[]    @relation("admin")
 
   @@index([id])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@map("verification")
 }
 
 model Room {
@@ -29,8 +73,9 @@ model Room {
   slug      String   @unique
   createdAt DateTime @default(now())
   adminId   String
+  snapshot  Json?
   admin     User     @relation("admin", fields: [adminId], references: [id])
-  chats     Chat[] // one room will have multiple chats 
+  chats     Chat[]
 }
 
 model Chat {
@@ -41,4 +86,3 @@ model Chat {
   userId   String
   user     User   @relation(fields: [userId], references: [id])
 }
-  

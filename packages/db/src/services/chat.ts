@@ -2,11 +2,6 @@ import { client } from "../index.ts";
 import { ApiError } from "@repo/common";
 
 const createChat = async (userId: string, roomId: number, messages: string) => {
-    console.log(process.env.DATABASE_URL);
-    console.log(process.env.DATABASE_URL);
-    console.log(process.env.DATABASE_URL);
-    console.log(process.env.DATABASE_URL);
-
     try {
         return await client.chat.create({
             data: { messages, roomId, userId },

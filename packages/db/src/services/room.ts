@@ -5,21 +5,39 @@ const createRoom = async (slug: string, adminId: string) => {
         data: { slug, adminId },
     });
 };
+
 const getRoomById = async (id: number) => {
     return client.room.findUnique({ where: { id } });
 };
 
-const getRoomByAdminId = async (adminId: string) => {
+const getRoomBySlug = async (slug: string) => {
+    return client.room.findUnique({ where: { slug } });
+};
+
+const getRoomsByAdminId = async (adminId: string) => {
     return client.room.findMany({ where: { adminId } });
 };
-const updateRoom = async (id: number, memberId: string) => {
+
+const getRoomSnapshot = async (slug: string) => {
+    const room = await client.room.findUnique({
+        where: { slug },
+        select: { snapshot: true },
+    });
+    return room?.snapshot ?? null;
+};
+
+const saveRoomSnapshot = async (roomId: number, snapshot: unknown) => {
     return client.room.update({
-        where: { id },
-        data: { members: { push: memberId } },
+        where: { id: roomId },
+        data: { snapshot: snapshot as object },
     });
 };
-//debuging function 
-const getAllRooms = async () => {
-    return client.room.findMany();
+
+export {
+    createRoom,
+    getRoomById,
+    getRoomBySlug,
+    getRoomsByAdminId,
+    getRoomSnapshot,
+    saveRoomSnapshot,
 };
-export { createRoom, getRoomById, getRoomByAdminId, updateRoom , getAllRooms};

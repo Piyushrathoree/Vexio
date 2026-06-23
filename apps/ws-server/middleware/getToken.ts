@@ -1,29 +1,32 @@
-import { ApiError } from "@repo/common";
-import verifyUser from "./verify.ts";
-import WebSocket from "ws";
+import type { WebSocket } from "ws";
+import verifyUser from "./verify";
 
-export default function getToken(
+export default async function getToken(
     request: { url?: string },
     ws: WebSocket
-): string | null {
+): Promise<string | null> {
     try {
-        const url = String(request.url);
+        const url = request.url;
         if (!url) {
+            ws.close();
             return null;
         }
-        const queryParams = new URLSearchParams(url.split("?")[1]);
-        const token = queryParams.get("token");
+
+        const token = new URL(url, "http://localhost").searchParams.get("token");
         if (!token) {
             ws.close();
             return null;
         }
-        const userId = verifyUser(token);
-        if (typeof userId !== "string") {
+
+        const userId = await verifyUser(token);
+        if (!userId) {
             ws.close();
             return null;
         }
+
         return userId;
-    } catch (error) {
-        throw new ApiError(500, "user not authenticated");
+    } catch {
+        ws.close();
+        return null;
     }
 }

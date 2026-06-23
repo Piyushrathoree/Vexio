@@ -4,7 +4,7 @@
     "type": "module",
     "private": true,
     "scripts": {
-        "dev": "nodemon index.ts --watch ",
+        "dev": "bun --hot index.ts",
         "build": "bun build",
         "start": "bun start"
     },
@@ -18,7 +18,8 @@
     "dependencies": {
         "@repo/typescript-config": "*",
         "@repo/common": "*",
-        "@repo/db":"*",
+        "@repo/auth": "*",
+        "@repo/db": "*",
         "ws": "^8.18.3"
     },
     "peerDependencies": {

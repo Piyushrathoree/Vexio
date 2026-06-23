@@ -1,16 +1,14 @@
-export {
-    createUser,
-    getUserById,
-    getUserByEmail,
-    
-} from "./src/services/auth.ts";
+export { client } from "./src/index.ts";
+
+export { getUserById } from "./src/services/auth.ts";
 
 export {
     createRoom,
-    getRoomByAdminId,
     getRoomById,
-    updateRoom,
-    getAllRooms,
+    getRoomBySlug,
+    getRoomsByAdminId,
+    getRoomSnapshot,
+    saveRoomSnapshot,
 } from "./src/services/room.ts";
 
 export {
