@@ -42,3 +42,8 @@ dist/
 
 Packages/db/src/generated
 Packages/db/src/generated/*
+
+# IDE / editor
+.agent
+.commandcode
+.cursor
