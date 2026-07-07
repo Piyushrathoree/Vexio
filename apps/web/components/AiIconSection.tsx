@@ -92,7 +92,7 @@ const AISection = () => {
         <section id="ai" className="relative z-10 px-4 py-24">
             <div className="mx-auto max-w-6xl">
                 <Reveal className="mx-auto max-w-2xl text-center">
-                    <p className="coord mb-4">// ai · prompt → svg</p>
+                    <p className="coord mb-4">{"// ai · prompt → svg"}</p>
                     <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-5xl">
                         Describe it.{" "}
                         <span className="bg-linear-to-r from-[var(--color-violet)] to-[var(--color-indigo)] bg-clip-text text-transparent">

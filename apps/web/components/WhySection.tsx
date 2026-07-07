@@ -14,7 +14,7 @@ const WhySection = () => {
         <section id="why" className="relative z-10 px-4 py-24">
             <div className="mx-auto max-w-4xl text-center">
                 <Reveal>
-                    <p className="coord mb-4">// why vexio</p>
+                    <p className="coord mb-4">{"// why vexio"}</p>
                     <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-6xl">
                         More than a{" "}
                         <span className="relative inline-block">

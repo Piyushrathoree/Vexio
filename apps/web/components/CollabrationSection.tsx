@@ -57,7 +57,7 @@ const CollaborationSection = () => {
                 <div className="grid items-center gap-12 lg:grid-cols-2">
                     {/* Left: copy */}
                     <Reveal>
-                        <p className="coord mb-4">// real-time · x:0 y:0</p>
+                        <p className="coord mb-4">{"// real-time · x:0 y:0"}</p>
                         <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-5xl">
                             Work together,
                             <br />

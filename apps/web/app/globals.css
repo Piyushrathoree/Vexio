@@ -2,19 +2,37 @@
 @import "@repo/tailwind-config";
 
 /* ------------------------------------------------------------------ *
- *  Vexio — "Living Canvas" design system
- *  A dark infinite whiteboard. Ink on canvas, hairline artboards,
- *  a polychrome "marker" accent set used only where collaborators are.
+ *  Vexio — Living Canvas (landing-matched dark aesthetic)
  * ------------------------------------------------------------------ */
 
-@theme {
-    --font-display: var(--font-bricolage), "Bricolage Grotesque", ui-sans-serif,
-        system-ui, sans-serif;
-    --font-body: var(--font-inter), "Inter", ui-sans-serif, system-ui,
-        sans-serif;
-    --font-hand: var(--font-kalam), "Kalam", ui-sans-serif, cursive;
-    --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace,
-        SFMono-Regular, monospace;
+@theme inline {
+    --font-body: var(--font-body);
+    --font-display: var(--font-display);
+    --font-title: var(--font-title);
+    --font-hand: var(--font-hand);
+    --font-mono: var(--font-mono);
+
+    --color-canvas: var(--color-canvas);
+    --color-surface: var(--color-surface);
+    --color-surface-2: var(--color-surface-2);
+    --color-ink: var(--color-ink);
+    --color-ink-dim: var(--color-ink-dim);
+    --color-ink-faint: var(--color-ink-faint);
+    --color-hairline: var(--color-hairline);
+    --color-indigo: var(--color-indigo);
+    --color-violet: var(--color-violet);
+    --color-coral: var(--color-coral);
+    --color-mint: var(--color-mint);
+    --color-amber: var(--color-amber);
+}
+
+:root {
+    --font-body: var(--font-inter);
+    --font-display: var(--font-bricolage);
+    --font-title: var(--font-bricolage);
+    --font-hand: var(--font-kalam);
+    --font-mono: var(--font-jetbrains), ui-monospace, "JetBrains Mono", Menlo,
+        Consolas, monospace;
 
     --color-canvas: #0a0c12;
     --color-surface: #10131c;
@@ -23,8 +41,6 @@
     --color-ink-dim: #9aa2b4;
     --color-ink-faint: #646c7e;
     --color-hairline: rgba(255, 255, 255, 0.09);
-
-    /* The collaborator / marker ensemble. */
     --color-indigo: #6e8cff;
     --color-violet: #b98cff;
     --color-coral: #ff7e82;
@@ -32,30 +48,38 @@
     --color-amber: #ffc96b;
 }
 
-body {
-    background-color: var(--color-canvas);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
+html {
+    color-scheme: dark;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-surface-2) transparent;
 }
 
-/* --- Global accessibility & quality floor ---------------------------
- *  Applies everywhere — auth screens and the app shell too, not just
- *  the .lp landing page.
- * ------------------------------------------------------------------ */
-:root {
-    /* Native form controls / scrollbars render dark, not light-default. */
-    color-scheme: dark;
+@layer base {
+    * {
+        border-color: var(--color-hairline);
+    }
+    body {
+        background-color: var(--color-canvas);
+        color: var(--color-ink);
+        font-family: var(--font-body);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+    }
+}
+
+::selection {
+    background: rgba(110, 140, 255, 0.28);
+    color: var(--color-ink);
 }
 
 :focus-visible {
     outline: 2px solid var(--color-indigo);
-    outline-offset: 3px;
-    border-radius: 4px;
+    outline-offset: 2px;
 }
 
-/* The sticky nav (h-14 + pt-4) floats over the top of the page — offset
-   in-page anchors so a jump doesn't land a heading under the glass bar. */
+/* --- Global accessibility & quality floor --------------------------- */
 #main-content,
 #collaborate,
 #ai,
@@ -63,8 +87,30 @@ body {
     scroll-margin-top: 6rem;
 }
 
+/* --- App shell (auth, dashboard — toned-down canvas) --------------- */
+.app {
+    position: relative;
+    min-height: 100vh;
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    background-color: var(--color-canvas);
+    overflow-x: clip;
+}
+
+.app-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+        circle at 1px 1px,
+        rgba(255, 255, 255, 0.04) 1px,
+        transparent 0
+    );
+    background-size: 28px 28px;
+}
+
 /* --- Landing scope ------------------------------------------------- */
-/* Kept under .lp so the auth pages (which paint their own bg) are safe. */
 .lp {
     position: relative;
     min-height: 100vh;
@@ -74,7 +120,6 @@ body {
     overflow-x: clip;
 }
 
-/* Ambient dot grid + drifting aurora behind everything. */
 .lp-bg {
     position: fixed;
     inset: 0;
@@ -136,8 +181,6 @@ body {
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-/* Corner coordinate label — a canvas is addressed by coordinates,
-   so this replaces generic 01 / 02 numbering. */
 .coord {
     font-family: var(--font-mono);
     font-size: 0.68rem;
@@ -187,18 +230,7 @@ body {
     transform: translateY(0) scale(0.98);
 }
 
-/* --- Shared component library (cross-page) -------------------------
- *  Token-driven primitives for screens beyond the landing page — auth
- *  forms, the room browser, future dashboards. Each extracts a pattern
- *  already repeated ad hoc across the app, so swapping it in should be
- *  a visual no-op. Note: these are plain (unlayered) classes, so they
- *  win over same-specificity Tailwind utilities — size/recolor via
- *  inline style when you need to override a baked-in value, rather
- *  than conflicting Tailwind h-, w-, or bg- utilities.
- * ------------------------------------------------------------------ */
-
-/* Calmer sibling of .artboard — the flat panel used for use-case /
-   room cards and skeleton loaders. */
+/* --- Shared component library (cross-page) ------------------------- */
 .card {
     position: relative;
     border-radius: 16px;
@@ -209,8 +241,6 @@ body {
         background-color 0.2s ease;
 }
 
-/* Dark form field with an indigo focus ring (the login / signup /
-   rooms input, made reusable). */
 .input {
     width: 100%;
     border-radius: 12px;
@@ -237,8 +267,6 @@ body {
     cursor: not-allowed;
 }
 
-/* Mono label pill — coordinates, statuses, tags (the "LIVE" badge
-   pattern from Hero, generalized). */
 .chip {
     display: inline-flex;
     align-items: center;
@@ -253,8 +281,6 @@ body {
     color: var(--color-ink-dim);
 }
 
-/* Round initial badge — collaborators, accounts. Default size is
-   2rem; resize with an inline style, not a sizing utility. */
 .avatar {
     display: inline-grid;
     place-items: center;
@@ -269,8 +295,6 @@ body {
     font-size: 0.75rem;
 }
 
-/* Tool / view segment control. Flag the active child with .is-active
-   or aria-selected="true". */
 .segmented {
     display: inline-flex;
     align-items: center;
@@ -296,8 +320,6 @@ body {
     color: var(--color-canvas);
 }
 
-/* Square icon button — toolbars, menu triggers. Mirrors the sizing
-   already used for the floating tool dock / nav toggle. */
 .icon-btn {
     display: inline-grid;
     place-items: center;
@@ -322,8 +344,6 @@ body {
     color: var(--color-canvas);
 }
 
-/* Drop-in focus ring for custom interactive elements (a styled label,
-   a div[tabindex]) that want the house focus treatment on demand. */
 .focus-ring {
     outline: none;
 }

@@ -2,9 +2,6 @@
 
 import { useState } from "react";
 
-// Mirrors the whiteboard's collaborator-presence marker cycle (see
-// PRESENCE_MARKER_COLORS in app/whiteboard/[slug]/page.tsx) so a person's
-// accent color feels consistent with the rest of the "Living Canvas".
 const MARKER_COLORS = [
     "var(--color-indigo)",
     "var(--color-violet)",
@@ -13,8 +10,6 @@ const MARKER_COLORS = [
     "var(--color-amber)",
 ];
 
-// Stable hash so the same name always lands on the same marker color and
-// the same initials, across reloads and devices.
 function hashString(value: string): number {
     let hash = 0;
     for (let i = 0; i < value.length; i += 1) {
@@ -39,9 +34,6 @@ interface ProfileAvatarProps {
     className?: string;
 }
 
-// Large identity avatar for the profile hero: the user's photo when one
-// loads successfully, otherwise initials on a marker-color disc derived
-// from their name.
 export function ProfileAvatar({
     name,
     image,
@@ -56,17 +48,15 @@ export function ProfileAvatar({
 
     return (
         <span
-            className={`relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full border border-hairline ${className}`}
+            className={`avatar relative overflow-hidden ${className}`}
             style={{
                 width: size,
                 height: size,
                 background: showImage ? undefined : accent,
+                fontSize: Math.max(12, size * 0.36),
             }}
         >
             {showImage ? (
-                // A plain <img> sidesteps next/image's remote-domain
-                // allowlist — social-login avatars can come from any
-                // provider's CDN, and this is a small, non-LCP image.
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                     src={image ?? undefined}
@@ -77,13 +67,7 @@ export function ProfileAvatar({
                     onError={() => setImageFailed(true)}
                 />
             ) : (
-                <span
-                    className="font-display font-bold text-[#0a0c12]"
-                    style={{ fontSize: Math.max(12, size * 0.36) }}
-                    aria-hidden
-                >
-                    {initialsFor(name)}
-                </span>
+                <span aria-hidden>{initialsFor(name)}</span>
             )}
         </span>
     );

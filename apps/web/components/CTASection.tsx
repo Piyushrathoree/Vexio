@@ -52,7 +52,7 @@ const CTASection = () => {
                     </div>
 
                     <div className="relative px-6 py-14 text-center sm:px-12 sm:py-16">
-                        <p className="coord mb-4">// let&apos;s go</p>
+                        <p className="coord mb-4">{"// let's go"}</p>
                         <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-6xl">
                             Your next idea,
                             <br />

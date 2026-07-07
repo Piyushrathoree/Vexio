@@ -1,29 +1,21 @@
 import "@repo/ui/styles.css";
 import "./globals.css";
 import type { Metadata } from "next";
-import {
-    Bricolage_Grotesque,
-    Inter,
-    JetBrains_Mono,
-    Kalam,
-} from "next/font/google";
+import { Bricolage_Grotesque, Inter, JetBrains_Mono, Kalam } from "next/font/google";
 
-// Display voice — characterful contemporary grotesque.
-const bricolage = Bricolage_Grotesque({
-    subsets: ["latin"],
-    weight: ["400", "600", "700", "800"],
-    variable: "--font-bricolage",
-    display: "swap",
-});
-
-// Body / UI — precise and quiet.
 const inter = Inter({
     subsets: ["latin"],
     variable: "--font-inter",
     display: "swap",
 });
 
-// Hand — sketch annotations on the canvas.
+const bricolage = Bricolage_Grotesque({
+    subsets: ["latin"],
+    variable: "--font-bricolage",
+    display: "swap",
+});
+
+// Hand — sketch annotations on the canvas (unported whiteboard chrome).
 const kalam = Kalam({
     subsets: ["latin"],
     weight: ["400", "700"],
@@ -53,10 +45,9 @@ export default function RootLayout({
     return (
         <html
             lang="en"
-            className={`${bricolage.variable} ${inter.variable} ${kalam.variable} ${jetbrains.variable} scroll-smooth motion-reduce:scroll-auto`}
-            suppressHydrationWarning
+            className={`${inter.className} ${inter.variable} ${bricolage.variable} ${kalam.variable} ${jetbrains.variable} scroll-smooth motion-reduce:scroll-auto`}
         >
-            <body className={inter.className}>{children}</body>
+            <body>{children}</body>
         </html>
     );
 }
