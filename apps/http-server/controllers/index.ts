@@ -8,12 +8,15 @@ const CreateRoom = async (req: Request, res: Response) => {
         throw new ApiError(401, "unauthorized");
     }
 
-    const { slug } = req.body;
+    const { slug } = req.body ?? {};
     if (!slug || typeof slug !== "string") {
         throw new ApiError(400, "you must have a Slug");
     }
 
     const normalizedSlug = slug.trim().toLowerCase();
+    if (normalizedSlug.length < 3 || normalizedSlug.length > 64) {
+        throw new ApiError(400, "slug must be between 3 and 64 characters");
+    }
     if (!/^[a-z0-9-]+$/.test(normalizedSlug)) {
         throw new ApiError(
             400,
@@ -49,8 +52,13 @@ const getMyRooms = async (req: Request, res: Response) => {
 };
 
 const getRoom = async (req: Request, res: Response) => {
-    const slug = req.params.slug;
-    if (!slug || typeof slug !== "string") {
+    const rawSlug = req.params.slug;
+    if (!rawSlug || typeof rawSlug !== "string") {
+        throw new ApiError(400, "slug is required");
+    }
+
+    const slug = rawSlug.trim().toLowerCase();
+    if (!slug) {
         throw new ApiError(400, "slug is required");
     }
 

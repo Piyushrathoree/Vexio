@@ -35,11 +35,16 @@ export const {
     signIn,
     signUp,
     signOut,
-    useSession,
     requestPasswordReset,
     resetPassword,
     sendVerificationEmail,
 } = authClient;
+
+// Annotate explicitly against the local `authClient` value. Destructuring
+// `useSession` lets TS infer a type that points into better-auth's internal
+// `dist/client/types.d.mts`, which isn't portable in emitted declarations
+// (TS2742). `typeof authClient.useSession` names it via a symbol in this file.
+export const useSession: typeof authClient.useSession = authClient.useSession;
 
 export const getBearerToken = () =>
     typeof window !== "undefined"

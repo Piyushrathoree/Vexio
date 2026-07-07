@@ -1,259 +1,223 @@
+"use client";
+
 import React, { useState, useEffect } from "react";
 import {
     Sparkles,
     Wand2,
     Palette,
-    Maximize2,
     Edit3,
     Check,
     Zap,
     Database,
     Cloud,
 } from "lucide-react";
-import Badge from "./custom/badge";
-import { kalam, ranchers } from "../app/fonts";
+import Reveal from "./Reveal";
 
 const prompts = [
-    { text: '"Minimal lightning bolt icon"', icon: "lightning" },
-    { text: '"Rounded database icon, hand-drawn"', icon: "database" },
-    { text: '"Simple cloud icon, outline"', icon: "cloud" },
+    { text: '"Minimal lightning bolt icon"', chip: "lightning", icon: Zap },
+    { text: '"Rounded database icon, hand-drawn"', chip: "database", icon: Database },
+    { text: '"Simple cloud icon, outline"', chip: "cloud", icon: Cloud },
 ];
 
 const benefits = [
     {
         icon: Wand2,
-        title: "No design skills required",
-        description: "Just describe what you need in plain English",
+        title: "No design skills",
+        description: "Describe what you need in plain English.",
     },
     {
         icon: Sparkles,
         title: "Instant results",
-        description: "Get clean SVG icons in seconds",
+        description: "Clean, scalable SVGs in a couple of seconds.",
     },
     {
         icon: Palette,
-        title: "Consistent style",
-        description: "Icons match the whiteboard aesthetic",
+        title: "On-brand style",
+        description: "Icons that match the board they live on.",
     },
     {
         icon: Edit3,
         title: "Fully editable",
-        description: "Resize, recolor, and customize freely",
+        description: "Resize, recolor, and reshape after the fact.",
     },
 ];
-
-const SketchLightning = (props: React.SVGProps<SVGSVGElement>) => (
-    <Zap {...props} />
-);
-
-export const SketchDatabase = (props: React.SVGProps<SVGSVGElement>) => (
-    <Database {...props} />
-);
-
-export const SketchCloud = (props: React.SVGProps<SVGSVGElement>) => (
-    <Cloud {...props} />
-);
-
-export const SketchSparkle = (props: React.SVGProps<SVGSVGElement>) => (
-    <Sparkles {...props} />
-);
 
 const AISection = () => {
     const [activePrompt, setActivePrompt] = useState(0);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [showResult, setShowResult] = useState(false);
+    const [showResult, setShowResult] = useState(true);
 
     useEffect(() => {
+        // Respect the same reduced-motion preference the CSS layer honors —
+        // the demo stays put on its first prompt but is still clickable.
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            return;
+        }
+
         const interval = setInterval(() => {
             setIsGenerating(true);
             setShowResult(false);
 
-            setTimeout(() => {
+            const genTimer = setTimeout(() => {
                 setIsGenerating(false);
                 setShowResult(true);
             }, 1200);
 
-            setTimeout(() => {
+            const nextTimer = setTimeout(() => {
                 setActivePrompt((prev) => (prev + 1) % prompts.length);
             }, 3000);
+
+            return () => {
+                clearTimeout(genTimer);
+                clearTimeout(nextTimer);
+            };
         }, 4000);
 
         return () => clearInterval(interval);
     }, []);
 
-    const renderIcon = () => {
-        const icons: Record<string, React.ReactNode> = {
-            lightning: <SketchLightning className="w-12 h-12" />,
-            database: <SketchDatabase className="w-12 h-12" />,
-            cloud: <SketchCloud className="w-12 h-12" />,
-        };
-        return icons[prompts[activePrompt]!.icon];
+    const pick = (index: number) => {
+        setActivePrompt(index);
+        setIsGenerating(true);
+        setShowResult(false);
+        setTimeout(() => {
+            setIsGenerating(false);
+            setShowResult(true);
+        }, 900);
     };
 
-    return (
-        <section id="ai" className="py-24 relative overflow-hidden -mt-10">
-            <div className="container mx-auto px-6 relative">
-                {/* Header */}
-                <div className="text-center max-w-3xl mx-auto mb-16 flex flex-col items-center">
-                    <Badge
-                        icon={<Sparkles className="w-4 h-4 text-orange-500" />}
-                        text=" AI-Powered Icons"
-                        className2="text-orange-600 border-orange-400 shadow-inner shadow-orange-300 font-bold"
-                    />
+    const ResultIcon = prompts[activePrompt]!.icon;
 
-                    <h2
-                        className={`${ranchers.className} text-5xl lg:text-6xl font-bold text-slate-900 mb-6 `}
-                    >
+    return (
+        <section id="ai" className="relative z-10 px-4 py-24">
+            <div className="mx-auto max-w-6xl">
+                <Reveal className="mx-auto max-w-2xl text-center">
+                    <p className="coord mb-4">// ai · prompt → svg</p>
+                    <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-5xl">
                         Describe it.{" "}
-                        <span
-                            className={
-                                " bg-linear-to-br from-orange-600 via-orange-500 to-orange-400 bg-clip-text text-transparent"
-                            }
-                        >
+                        <span className="bg-linear-to-r from-[var(--color-violet)] to-[var(--color-indigo)] bg-clip-text text-transparent">
                             Generate it.
                         </span>
                     </h2>
-                    <p
-                        className={`text-lg text-black/60 leading-relaxed ${kalam.className}`}
-                    >
-                        Type a natural language prompt and instantly get clean,
-                        scalable SVG icons that blend perfectly with your
-                        whiteboard aesthetic. No design tools, no imports, no
-                        switching tabs.
+                    <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-dim">
+                        Type a plain-language prompt and get a clean, scalable
+                        SVG that drops straight onto the board. No design tools,
+                        no imports, no switching tabs.
                     </p>
-                </div>
+                </Reveal>
 
-                {/* Interactive Demo */}
-                <div className="max-w-5xl mx-auto mb-20">
-                    <div className="relative rounded-3xl border border-slate-200/80 bg-white/60 shadow-xl backdrop-blur-sm overflow-hidden">
-                        {/* Demo header */}
-                        <div className="flex items-center gap-4 px-6 py-4 bg-slate-50/80 border-b border-slate-200/80">
-                            <div className="flex items-center gap-2">
-                                <Sparkles className="w-5 h-5 text-orange-500" />
-                                <span className="font-display font-semibold text-slate-900">
-                                    AI Icon Generator
-                                </span>
-                            </div>
+                <Reveal delay={100} className="mx-auto mt-14 max-w-4xl">
+                    <div className="artboard overflow-hidden">
+                        <div className="flex items-center gap-2 border-b border-hairline px-5 py-3.5">
+                            <Sparkles className="h-4 w-4 text-[var(--color-violet)]" aria-hidden />
+                            <span className="font-mono text-sm text-ink-dim">
+                                ai-icon-generator
+                            </span>
                         </div>
 
-                        <div className="p-8 grid md:grid-cols-2 gap-10 items-center">
-                            {/* Prompt Input */}
-                            <div className="space-y-6">
-                                <div className="space-y-3">
-                                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <div className="grid items-center gap-8 p-6 md:grid-cols-2 md:p-8">
+                            {/* prompt column */}
+                            <div className="space-y-5">
+                                <div className="space-y-2">
+                                    <label className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">
                                         Your prompt
                                     </label>
-                                    <div className="relative">
-                                        <div className="w-full px-4 py-4 rounded-2xl bg-slate-50 border border-orange-200 font-mono text-slate-900 text-sm leading-relaxed">
-                                            {prompts[activePrompt]!.text}
-                                            <span className="animate-pulse ml-0.5">
-                                                |
-                                            </span>
-                                        </div>
+                                    <div className="rounded-xl border border-[var(--color-violet)]/30 bg-[var(--color-canvas)] px-4 py-4 font-mono text-sm text-ink">
+                                        {prompts[activePrompt]!.text}
+                                        <span className="blink ml-0.5 text-[var(--color-violet)]">
+                                            |
+                                        </span>
                                     </div>
                                 </div>
 
-                                {/* Prompt suggestions */}
                                 <div className="flex flex-wrap gap-2">
                                     {prompts.map((prompt, index) => (
                                         <button
-                                            key={index}
-                                            onClick={() => {
-                                                setActivePrompt(index);
-                                                setIsGenerating(true);
-                                                setShowResult(false);
-                                                setTimeout(() => {
-                                                    setIsGenerating(false);
-                                                    setShowResult(true);
-                                                }, 1000);
-                                            }}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                                            key={prompt.chip}
+                                            onClick={() => pick(index)}
+                                            className={`rounded-full px-3 py-1.5 font-mono text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-violet)] ${
                                                 activePrompt === index
-                                                    ? "bg-orange-500 text-white shadow-sm"
-                                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                                    ? "bg-[var(--color-violet)] text-[#0a0c12]"
+                                                    : "border border-hairline text-ink-dim hover:text-ink"
                                             }`}
                                         >
-                                            {prompt.icon}
+                                            {prompt.chip}
                                         </button>
                                     ))}
                                 </div>
 
-                                {/* Generate button */}
                                 <button
-                                    className={`w-full py-3.5 rounded-2xl font-semibold transition-all flex items-center justify-center gap-2 ${
-                                        isGenerating
-                                            ? "bg-orange-500/90 text-white shadow-sm"
-                                            : "bg-orange-500 text-white hover:bg-orange-600 shadow-lg hover:shadow-orange-500/30"
-                                    }`}
+                                    onClick={() => pick(activePrompt)}
                                     disabled={isGenerating}
+                                    className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-violet)] disabled:opacity-90"
                                 >
                                     {isGenerating ? (
                                         <>
-                                            <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                                            Generating...
+                                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#0a0c12]/30 border-t-[#0a0c12] motion-reduce:animate-none" />
+                                            Generating…
                                         </>
                                     ) : (
                                         <>
-                                            <Wand2 className="w-5 h-5" />
-                                            Generate Icon
+                                            <Wand2 className="h-4 w-4" aria-hidden />
+                                            Generate icon
                                         </>
                                     )}
                                 </button>
                             </div>
 
-                            {/* Result Area */}
+                            {/* result column */}
                             <div className="flex flex-col items-center justify-center">
                                 <div
-                                    className={`w-32 h-32 rounded-xl border flex items-center justify-center transition-all duration-500 ${
+                                    className={`grid h-36 w-36 place-items-center rounded-2xl border transition-all duration-500 ${
                                         showResult
-                                            ? "border-orange-300 bg-orange-50 text-orange-600 scale-100 shadow-md"
-                                            : "border-slate-200 bg-slate-50 text-slate-400 scale-95"
+                                            ? "scale-100 border-[var(--color-violet)]/40 bg-[var(--color-violet)]/10 text-[var(--color-violet)]"
+                                            : "scale-95 border-hairline bg-white/[0.02] text-ink-faint"
                                     }`}
                                 >
                                     {isGenerating ? (
                                         <div className="flex flex-col items-center gap-2">
-                                            <SketchSparkle className="w-8 h-8 animate-pulse-soft text-orange-500" />
-                                            <span className="text-xs text-slate-500">
-                                                Creating...
+                                            <Sparkles className="h-8 w-8 twinkle text-[var(--color-violet)]" aria-hidden />
+                                            <span className="font-mono text-[11px] text-ink-faint">
+                                                creating…
                                             </span>
                                         </div>
                                     ) : showResult ? (
-                                        <div className="animate-scale-in">
-                                            {renderIcon()}
-                                        </div>
+                                        <ResultIcon className="h-14 w-14" />
                                     ) : (
-                                        <Sparkles className="w-8 h-8 opacity-30" />
+                                        <Sparkles className="h-8 w-8 opacity-30" aria-hidden />
                                     )}
                                 </div>
 
-                                {showResult && (
-                                    <div className="mt-4 flex items-center gap-2 text-sm text-emerald-600 animate-fade-up">
-                                        <Check className="w-4 h-4" />
-                                        <span>SVG ready to use</span>
-                                    </div>
-                                )}
+                                <div
+                                    className={`mt-4 flex items-center gap-2 text-sm text-[var(--color-mint)] transition-opacity ${
+                                        showResult ? "opacity-100" : "opacity-0"
+                                    }`}
+                                >
+                                    <Check className="h-4 w-4" aria-hidden />
+                                    <span className="font-mono text-xs">
+                                        svg ready to drop in
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </Reveal>
 
-                {/* Benefits Grid */}
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {benefits.map((useCase, index) => (
-                        <div
-                            key={index}
-                            className="group p-6 rounded-xl bg-card border border-border/50 shadow-soft hover:shadow-lg hover:border-primary/30 transition-all duration-300 hover:-translate-y-1"
-                        >
-                            <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center mb-4 group-hover:bg-orange-100 transition-colors">
-                                <useCase.icon className="w-6 h-6 text-orange-500" />
+                <div className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {benefits.map((benefit, i) => (
+                        <Reveal key={benefit.title} delay={i * 80}>
+                            <div className="h-full rounded-2xl border border-hairline bg-white/[0.02] p-6 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.04]">
+                                <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-[var(--color-violet)]/12 text-[var(--color-violet)]">
+                                    <benefit.icon className="h-5 w-5" />
+                                </span>
+                                <h3 className="font-display text-lg font-bold text-ink">
+                                    {benefit.title}
+                                </h3>
+                                <p className="mt-2 text-sm leading-relaxed text-ink-dim">
+                                    {benefit.description}
+                                </p>
                             </div>
-                            <h3 className="font-display font-semibold text-lg text-slate-900 mb-2">
-                                {useCase.title}
-                            </h3>
-                            <p className="text-sm text-black/60">
-                                {useCase.description}
-                            </p>
-                        </div>
+                        </Reveal>
                     ))}
                 </div>
             </div>

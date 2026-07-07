@@ -46,6 +46,10 @@ app.get("/api/me", async (req :Request, res:Response) => {
 
 app.use("/api/v1/", router);
 
+app.use((_req: Request, res: Response) => {
+    res.status(404).json({ success: false, message: "not found" });
+});
+
 app.use(
     (
         err: unknown,
@@ -67,6 +71,13 @@ app.use(
         });
     }
 );
+
+process.on("unhandledRejection", (reason) => {
+    console.error("[Vexio:HTTP] unhandled rejection", reason);
+});
+process.on("uncaughtException", (err) => {
+    console.error("[Vexio:HTTP] uncaught exception", err);
+});
 
 app.listen(port, () => {
     console.log(`http-server is running at port ${port}`);

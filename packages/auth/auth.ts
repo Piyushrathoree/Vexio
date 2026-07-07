@@ -46,7 +46,10 @@ export const auth = betterAuth({
     },
     emailAndPassword: {
         enabled: true,
-        requireEmailVerification: true,
+        // NOTE: off for local dev so login works without SMTP. Before production,
+        // set this to `true` AND configure SMTP_* in .env (see WEBSOCKET_FIXES.md),
+        // otherwise users can't verify their email and real-time will break.
+        requireEmailVerification: false,
         autoSignIn: false,
         sendResetPassword: async ({ user, url }) => {
             await sendEmail({

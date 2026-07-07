@@ -47,3 +47,6 @@ Packages/db/src/generated/*
 .agent
 .commandcode
 .cursor
+
+scratch-wstest.mjs
+WEBSOCKET_FIXES.md

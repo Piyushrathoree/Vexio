@@ -1,6 +1,10 @@
 import { auth } from "@repo/auth";
 
-const verifyUser = async (token: string): Promise<string | null> => {
+// The verified identity we hang off each connection. `name` powers live
+// cursor/presence labels; it falls back to "" when the session has no name.
+export type VerifiedUser = { id: string; name: string };
+
+const verifyUser = async (token: string): Promise<VerifiedUser | null> => {
     if (!token) {
         return null;
     }
@@ -17,7 +21,7 @@ const verifyUser = async (token: string): Promise<string | null> => {
             return null;
         }
 
-        return session.user.id;
+        return { id: session.user.id, name: session.user.name ?? "" };
     } catch (err) {
         console.error("[Vexio:WS] auth error", err);
         return null;

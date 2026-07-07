@@ -10,6 +10,9 @@ import {
     Square,
     Circle,
     Diamond,
+    Triangle,
+    Star,
+    StickyNote,
     Type,
     HelpCircle,
     Plus,
@@ -33,7 +36,9 @@ import React, {
 } from "react";
 
 import { AuthGuard } from "../../../components/AuthGuard";
+import { apiFetch } from "../../../lib/api";
 import { useWhiteboardStore } from "../../../lib/use-whiteboard-store";
+import { normalizeSlug } from "../../../lib/whiteboard-socket";
 
 import type {
     Point,
@@ -42,9 +47,11 @@ import type {
     ShapeType,
     FillableShapeType,
     DrawableType,
+    StrokeStyle,
     ShapeElement,
     PenElement,
     TextElement,
+    StickyElement,
     ActiveTextEditor,
     DrawingElement,
     PointerMode,
@@ -53,37 +60,56 @@ import type {
     PointerState,
 } from "../../../lib/types";
 
+// Grouped so the dock can render visual separators between families of tools.
 const TOOLBAR_TOOLS: Array<{
     id: Tool;
     label: string;
     icon: React.ElementType;
+    shortcut: string;
+    group: "pointer" | "draw" | "shape" | "content";
 }> = [
-    { id: "select", label: "Select", icon: MousePointer2 },
-    { id: "hand", label: "Hand", icon: Hand },
-    { id: "pen", label: "Pen", icon: Pencil },
-    { id: "eraser", label: "Eraser", icon: Eraser },
-    { id: "line", label: "Line", icon: MinusIcon },
-    { id: "arrow", label: "Arrow", icon: ArrowUpRight },
-    { id: "rect", label: "Rectangle", icon: Square },
-    { id: "ellipse", label: "Ellipse", icon: Circle },
-    { id: "diamond", label: "Diamond", icon: Diamond },
-    { id: "text", label: "Text", icon: Type },
+    { id: "select", label: "Select", icon: MousePointer2, shortcut: "V", group: "pointer" },
+    { id: "hand", label: "Hand", icon: Hand, shortcut: "H", group: "pointer" },
+    { id: "pen", label: "Pen", icon: Pencil, shortcut: "P", group: "draw" },
+    { id: "eraser", label: "Eraser", icon: Eraser, shortcut: "E", group: "draw" },
+    { id: "line", label: "Line", icon: MinusIcon, shortcut: "L", group: "shape" },
+    { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "A", group: "shape" },
+    { id: "rect", label: "Rectangle", icon: Square, shortcut: "R", group: "shape" },
+    { id: "ellipse", label: "Ellipse", icon: Circle, shortcut: "C", group: "shape" },
+    { id: "diamond", label: "Diamond", icon: Diamond, shortcut: "D", group: "shape" },
+    { id: "triangle", label: "Triangle", icon: Triangle, shortcut: "G", group: "shape" },
+    { id: "star", label: "Star", icon: Star, shortcut: "S", group: "shape" },
+    { id: "sticky", label: "Sticky note", icon: StickyNote, shortcut: "N", group: "content" },
+    { id: "text", label: "Text", icon: Type, shortcut: "T", group: "content" },
 ];
 
+// Richer stroke swatch set — ink + dim neutral lead the marker ensemble so the
+// most-used colors sit first, then the collaborator markers, then extras.
 const COLOR_PALETTE = [
-    "#6b7280",
-    "#000000",
+    "#f2f4f8",
+    "#9aa2b4",
+    "#6e8cff",
+    "#b98cff",
+    "#ff7e82",
+    "#55e0ad",
+    "#ffc96b",
+    "#4ba1f1",
+    "#10b981",
     "#ec4899",
     "#ef4444",
-    "#F87777",
     "#f59e0b",
-    "#099268",
-    "#10b981",
-    "#4565E9",
-    "#4BA1F1",
-    "#9333ea",
-    "#ffffff",
 ];
+
+const STROKE_STYLE_OPTIONS: Array<{ id: StrokeStyle; label: string }> = [
+    { id: "solid", label: "Solid" },
+    { id: "dashed", label: "Dashed" },
+];
+
+// Sticky-note preset dimensions / palette.
+const STICKY_DEFAULT_WIDTH = 184;
+const STICKY_DEFAULT_HEIGHT = 152;
+const STICKY_FILL = "#ffc96b";
+const STICKY_TEXT_COLOR = "#0a0c12";
 
 const DARK_CANVAS_INK = "#111827";
 const LIGHT_CANVAS_INK = "#ffffff";
@@ -228,20 +254,43 @@ const clamp = (value: number, min: number, max: number): number => {
     return Math.max(min, Math.min(max, value));
 };
 
+const SHAPE_TYPES: readonly ShapeType[] = [
+    "line",
+    "arrow",
+    "rect",
+    "ellipse",
+    "diamond",
+    "triangle",
+    "star",
+];
+
+// A stroked shape (as opposed to pen/text/sticky) — the only element family
+// that honors solid/dashed strokeStyle.
+const isShapeType = (type: string | undefined): type is ShapeType =>
+    !!type && (SHAPE_TYPES as readonly string[]).includes(type);
+
 const isFillableShapeType = (
     shapeType: ShapeType
 ): shapeType is FillableShapeType => {
     return (
         shapeType === "rect" ||
         shapeType === "ellipse" ||
-        shapeType === "diamond"
+        shapeType === "diamond" ||
+        shapeType === "triangle" ||
+        shapeType === "star"
     );
 };
 
 const isFillableShape = (
     el: DrawingElement
 ): el is ShapeElement & { type: FillableShapeType } => {
-    return el.type === "rect" || el.type === "ellipse" || el.type === "diamond";
+    return (
+        el.type === "rect" ||
+        el.type === "ellipse" ||
+        el.type === "diamond" ||
+        el.type === "triangle" ||
+        el.type === "star"
+    );
 };
 
 const toFillColor = (hexColor: string, alpha: number): string => {
@@ -379,6 +428,99 @@ const normalizeRect = (el: {
         width: maxX - minX,
         height: maxY - minY,
     };
+};
+
+type BoxCoords = { x1: number; y1: number; x2: number; y2: number };
+
+// Equilateral-ish triangle inscribed in the element's bounding box (apex top).
+const getTriangleVertices = (el: BoxCoords): Point[] => {
+    const { minX, minY, maxX, maxY } = normalizeRect(el);
+    const cx = (minX + maxX) / 2;
+    return [
+        { x: cx, y: minY },
+        { x: maxX, y: maxY },
+        { x: minX, y: maxY },
+    ];
+};
+
+const STAR_SPIKES = 5;
+const STAR_INNER_RATIO = 0.42;
+
+// Five-point star inscribed in the bounding box (points ride the box ellipse).
+const getStarVertices = (el: BoxCoords): Point[] => {
+    const { minX, minY, width, height } = normalizeRect(el);
+    const cx = minX + width / 2;
+    const cy = minY + height / 2;
+    const outerX = Math.max(1, width / 2);
+    const outerY = Math.max(1, height / 2);
+    const vertices: Point[] = [];
+    for (let i = 0; i < STAR_SPIKES * 2; i += 1) {
+        const isOuter = i % 2 === 0;
+        const rX = isOuter ? outerX : outerX * STAR_INNER_RATIO;
+        const rY = isOuter ? outerY : outerY * STAR_INNER_RATIO;
+        const angle = (Math.PI / STAR_SPIKES) * i - Math.PI / 2;
+        vertices.push({
+            x: cx + Math.cos(angle) * rX,
+            y: cy + Math.sin(angle) * rY,
+        });
+    }
+    return vertices;
+};
+
+const tracePolygon = (ctx: CanvasRenderingContext2D, points: Point[]): void => {
+    const first = points[0];
+    if (!first) return;
+    ctx.moveTo(first.x, first.y);
+    for (let i = 1; i < points.length; i += 1) {
+        const point = points[i];
+        if (point) ctx.lineTo(point.x, point.y);
+    }
+    ctx.closePath();
+};
+
+// Even-odd ray cast — true when the point is inside the (possibly concave) poly.
+const pointInPolygon = (point: Point, polygon: Point[]): boolean => {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const pi = polygon[i];
+        const pj = polygon[j];
+        if (!pi || !pj) continue;
+        const intersects =
+            pi.y > point.y !== pj.y > point.y &&
+            point.x <
+                ((pj.x - pi.x) * (point.y - pi.y)) / (pj.y - pi.y) + pi.x;
+        if (intersects) inside = !inside;
+    }
+    return inside;
+};
+
+const distanceToPolygon = (point: Point, polygon: Point[]): number => {
+    let min = Infinity;
+    for (let i = 0; i < polygon.length; i += 1) {
+        const a = polygon[i];
+        const b = polygon[(i + 1) % polygon.length];
+        if (a && b) {
+            min = Math.min(min, distanceToSegment(point, a, b));
+        }
+    }
+    return min;
+};
+
+const roundedRectPath = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number
+): void => {
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + width, y, x + width, y + height, r);
+    ctx.arcTo(x + width, y + height, x, y + height, r);
+    ctx.arcTo(x, y + height, x, y, r);
+    ctx.arcTo(x, y, x + width, y, r);
+    ctx.closePath();
 };
 
 const getElementBounds = (el: DrawingElement) => {
@@ -649,7 +791,7 @@ const isPointNearElement = (
 ): boolean => {
     const threshold = Math.max(tolerance, el.thickness * 1.5);
 
-    if (el.type === "text") {
+    if (el.type === "text" || el.type === "sticky") {
         const { minX, minY, maxX, maxY } = normalizeRect(el);
         return (
             point.x >= minX - threshold &&
@@ -657,6 +799,17 @@ const isPointNearElement = (
             point.y >= minY - threshold &&
             point.y <= maxY + threshold
         );
+    }
+
+    if (el.type === "triangle" || el.type === "star") {
+        const vertices =
+            el.type === "triangle"
+                ? getTriangleVertices(el)
+                : getStarVertices(el);
+        if (pointInPolygon(point, vertices)) {
+            return true;
+        }
+        return distanceToPolygon(point, vertices) <= threshold;
     }
 
     if (el.type === "line" || el.type === "arrow") {
@@ -841,6 +994,14 @@ const drawShape = (
             ctx.closePath();
             break;
         }
+        case "triangle": {
+            tracePolygon(ctx, getTriangleVertices(el));
+            break;
+        }
+        case "star": {
+            tracePolygon(ctx, getStarVertices(el));
+            break;
+        }
         default: {
             break;
         }
@@ -906,6 +1067,55 @@ const drawTextElement = (
     }
 
     ctx.restore();
+    ctx.restore();
+};
+
+const drawStickyElement = (
+    ctx: CanvasRenderingContext2D,
+    el: StickyElement,
+    isDark: boolean
+): void => {
+    const { minX, minY, width, height } = normalizeRect(el);
+    if (width < 2 || height < 2) {
+        return;
+    }
+
+    const radius = Math.min(14, width / 2, height / 2);
+
+    ctx.save();
+
+    // Card body with a soft drop shadow so it reads as a physical note.
+    ctx.beginPath();
+    roundedRectPath(ctx, minX, minY, width, height, radius);
+    ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 5;
+    ctx.fillStyle = el.fill;
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Label.
+    const padding = 12;
+    const fontSize = Math.max(12, getTextBaseSize(el.thickness));
+    const lineHeight = fontSize * 1.3;
+    const weight = el.fontWeight || "normal";
+    const style = el.fontStyle || "normal";
+    ctx.fillStyle = getThemeAwareCanvasColor(el.color, isDark);
+    ctx.font = `${style} ${weight} ${fontSize}px ${el.fontFamily}`;
+    ctx.textBaseline = "top";
+
+    const lines = splitTextLines(el.text);
+    const maxWidth = Math.max(1, width - padding * 2);
+    for (let i = 0; i < lines.length; i += 1) {
+        const y = minY + padding + i * lineHeight;
+        if (y > minY + height - padding) {
+            break;
+        }
+        ctx.fillText(lines[i] ?? "", minX + padding, y, maxWidth);
+    }
+
     ctx.restore();
 };
 
@@ -1019,9 +1229,17 @@ const drawElement = (
     ctx.strokeStyle = strokeColor;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+    // Reset any dash left over from a previously drawn dashed shape so pen/text
+    // strokes are never accidentally dashed.
+    ctx.setLineDash([]);
 
     if (el.type === "text") {
         drawTextElement(ctx, el, isDark);
+        return;
+    }
+
+    if (el.type === "sticky") {
+        drawStickyElement(ctx, el, isDark);
         return;
     }
 
@@ -1083,7 +1301,13 @@ const drawElement = (
     }
 
     ctx.lineWidth = el.thickness;
+    ctx.setLineDash(
+        el.strokeStyle === "dashed"
+            ? [Math.max(6, el.thickness * 2.6), Math.max(6, el.thickness * 2)]
+            : []
+    );
     drawShape(ctx, el, isDark);
+    ctx.setLineDash([]);
 };
 
 const moveElement = (
@@ -1147,6 +1371,29 @@ const buildTextElement = (
     };
 };
 
+const buildStickyElement = (
+    point: Point,
+    fontFamily: string,
+    fontWeight = "normal",
+    fontStyle = "normal",
+    textDecoration = "none"
+): StickyElement => ({
+    id: buildId(),
+    type: "sticky",
+    x1: point.x,
+    y1: point.y,
+    x2: point.x + STICKY_DEFAULT_WIDTH,
+    y2: point.y + STICKY_DEFAULT_HEIGHT,
+    text: "",
+    fill: STICKY_FILL,
+    color: STICKY_TEXT_COLOR,
+    thickness: 3,
+    fontFamily,
+    fontWeight,
+    fontStyle,
+    textDecoration,
+});
+
 const minDrawableSize = 2;
 
 const subscribeToTheme = (callback: () => void) => {
@@ -1159,11 +1406,51 @@ const subscribeToTheme = (callback: () => void) => {
 };
 
 const getThemeSnapshot = () => {
-    return document.documentElement.classList.contains("dark");
+    // Vexio's whiteboard chrome always renders the dark "Living Canvas"
+    // theme — there is no light-mode toggle — so the theme-aware canvas
+    // color pipeline should always treat the surface as dark.
+    return true;
 };
 
 const getThemeServerSnapshot = () => {
-    return false;
+    return true;
+};
+
+// Stable per-user hue derived from a hash of the userId, so every viewer paints
+// the same collaborator in the same color for both their cursor and selection.
+const hashUserId = (value: string): number => {
+    let hash = 0;
+    for (let i = 0; i < value.length; i += 1) {
+        hash = (hash * 31 + value.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash);
+};
+
+// Hex mirror of the marker palette. Unlike the CSS-var list above, these resolve
+// everywhere — inline DOM styles AND the canvas — so a collaborator's color is
+// identical across their cursor, selection outline, and roster avatar.
+const MARKER_PALETTE = ["#6e8cff", "#b98cff", "#ff7e82", "#55e0ad", "#ffc96b"];
+
+const colorForUser = (userId: string): string =>
+    MARKER_PALETTE[hashUserId(userId) % MARKER_PALETTE.length] ?? "#6e8cff";
+
+// A collaborator's display name, falling back to a short id for legacy peers
+// that joined before names were on the wire.
+const displayName = (name: string | undefined, userId: string): string => {
+    const trimmed = (name ?? "").trim();
+    return trimmed.length > 0 ? trimmed : userId.slice(0, 4);
+};
+
+// One or two initials for the presence avatar badges.
+const initialsFor = (label: string): string => {
+    const parts = label.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "?";
+    if (parts.length === 1) {
+        return (parts[0] ?? "?").slice(0, 2).toUpperCase();
+    }
+    const first = parts[0]?.[0] ?? "";
+    const last = parts[parts.length - 1]?.[0] ?? "";
+    return `${first}${last}`.toUpperCase();
 };
 
 function WhiteboardCanvas({ slug }: { slug: string }) {
@@ -1184,6 +1471,16 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
         redo,
         canUndo,
         canRedo,
+        connected,
+        reconnecting,
+        wsError,
+        remoteUserIds,
+        remoteUsers,
+        remoteCursors,
+        remoteSelections,
+        sendCursor,
+        sendSelection,
+        reconnect,
     } = useWhiteboardStore(slug);
 
     elementsStateRef.current = elements;
@@ -1194,8 +1491,9 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
     const textEditorRef = useRef<ActiveTextEditor | null>(null);
 
     const [tool, setTool] = useState<Tool>("pen");
-    const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#6b7280");
-    const [thickness, setThickness] = useState<number>(3);
+    const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#f2f4f8");
+    const [thickness, setThickness] = useState<number>(4);
+    const [strokeStyle, setStrokeStyle] = useState<StrokeStyle>("solid");
     const [fontFamily, setFontFamily] = useState<string>(DEFAULT_FONT_FAMILY);
     const [fontWeight, setFontWeight] = useState<string>("normal");
     const [fontStyle, setFontStyle] = useState<string>("normal");
@@ -1215,7 +1513,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
 
     const [zoom, setZoom] = useState(100);
     const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
-    const canvasBg = isDark ? "#171717" : "#ffffff";
+    const canvasBg = isDark ? "#0a0c12" : "#ffffff";
 
     const applyElementPreview = useCallback((nextElement: DrawingElement) => {
         elementsRef.current = elementsRef.current.map((element) =>
@@ -1226,6 +1524,12 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
     useEffect(() => {
         selectedIdRef.current = selectedId;
     }, [selectedId]);
+
+    // Broadcast our current selection to the room (single id -> one-item array,
+    // [] when cleared). The hook throttles and no-ops while disconnected.
+    useEffect(() => {
+        sendSelection(selectedId ? [selectedId] : []);
+    }, [selectedId, sendSelection]);
 
     useEffect(() => {
         textEditorRef.current = textEditor;
@@ -1480,7 +1784,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
     }, []);
 
     const openTextEditorForElement = useCallback(
-        (el: TextElement) => {
+        (el: TextElement | StickyElement) => {
             const { minX, minY, width, height } = normalizeRect(el);
             const pan = panRef.current;
             startTextEditor({
@@ -1494,6 +1798,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                 text: el.text,
                 color: el.color,
                 thickness: el.thickness,
+                fill: el.type === "sticky" ? el.fill : undefined,
                 fontFamily: el.fontFamily,
                 fontWeight: el.fontWeight,
                 fontStyle: el.fontStyle,
@@ -1555,8 +1860,15 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     (el) => el.id === activeEditor.elementId
                 );
 
-                if (existingElement?.type === "text") {
-                    if (!hasText) {
+                if (
+                    existingElement &&
+                    (existingElement.type === "text" ||
+                        existingElement.type === "sticky")
+                ) {
+                    const isSticky = existingElement.type === "sticky";
+                    // An emptied text element is removed; an emptied sticky keeps
+                    // its card so the note doesn't vanish on an accidental blur.
+                    if (!hasText && !isSticky) {
                         deleteElement(activeEditor.elementId);
                         if (selectedIdRef.current === activeEditor.elementId) {
                             selectedIdRef.current = null;
@@ -1573,7 +1885,11 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                         const existing = elementsRef.current.find(
                             (el) => el.id === activeEditor.elementId
                         );
-                        if (existing && existing.type === "text") {
+                        if (
+                            existing &&
+                            (existing.type === "text" ||
+                                existing.type === "sticky")
+                        ) {
                             updateElement({
                                 ...existing,
                                 text: normalizedText,
@@ -1673,6 +1989,53 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     scheduleDraw();
                 }
 
+                return;
+            }
+
+            if (tool === "sticky") {
+                commitTextEditor(false);
+                pointerStateRef.current = null;
+                setHoverCursorClass(null);
+                setFillDropperActive(false);
+
+                const sticky = buildStickyElement(
+                    world,
+                    fontFamily,
+                    fontWeight,
+                    fontStyle,
+                    textDecoration
+                );
+                // Bridge the ref caches so the freshly-added note is immediately
+                // resolvable by the text-editor commit path.
+                const next = [...elementsStateRef.current, sticky];
+                elementsStateRef.current = next;
+                elementsRef.current = next;
+                addElement(sticky);
+
+                selectedIdRef.current = sticky.id;
+                setSelectedId(sticky.id);
+                setColor(sticky.color);
+                setThickness(sticky.thickness);
+
+                startTextEditor({
+                    x: sticky.x1,
+                    y: sticky.y1,
+                    screenX: screen.x,
+                    screenY: screen.y,
+                    elementId: sticky.id,
+                    width: STICKY_DEFAULT_WIDTH,
+                    height: STICKY_DEFAULT_HEIGHT,
+                    text: "",
+                    color: sticky.color,
+                    thickness: sticky.thickness,
+                    fill: sticky.fill,
+                    fontFamily,
+                    fontWeight,
+                    fontStyle,
+                    textDecoration,
+                });
+                setTool("select");
+                scheduleDraw();
                 return;
             }
 
@@ -1780,8 +2143,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     setSelectedId(target.id);
                     setColor(target.color);
                     setThickness(target.thickness);
-                    setThickness(target.thickness);
-                    if (target.type === "text") {
+                    if (target.type === "text" || target.type === "sticky") {
                         setFontFamily(target.fontFamily);
                         setFontWeight(target.fontWeight || "normal");
                         setFontStyle(target.fontStyle || "normal");
@@ -1822,6 +2184,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     type: shapeType,
                     color,
                     thickness,
+                    strokeStyle,
                     fill: null,
                     x1: world.x,
                     y1: world.y,
@@ -1853,6 +2216,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
             openTextEditorForElement,
             scheduleDraw,
             startTextEditor,
+            strokeStyle,
             thickness,
             tool,
             updateElement,
@@ -1872,7 +2236,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                 y: event.clientY - rect.top - panRef.current.y,
             };
             const target = getElementAtPoint(world);
-            if (target?.type !== "text") {
+            if (target?.type !== "text" && target?.type !== "sticky") {
                 return;
             }
 
@@ -1894,6 +2258,10 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
     const handlePointerMove = useCallback(
         (event: React.PointerEvent<HTMLCanvasElement>) => {
             const { world, screen } = getPoints(event);
+            // Broadcast our cursor in world coordinates so remote viewers can
+            // map it back through their own pan/zoom. The hook throttles the
+            // wire traffic and no-ops when the socket is closed.
+            sendCursor(world.x, world.y);
             const pointer = pointerStateRef.current;
             if (!pointer || pointer.pointerId !== event.pointerId) {
                 if (tool === "select" && !fillDropperActive) {
@@ -2049,6 +2417,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
             getPoints,
             applyElementPreview,
             scheduleDraw,
+            sendCursor,
             tool,
         ]
     );
@@ -2172,31 +2541,105 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
         router.push("/rooms");
     }, [router]);
 
+    const onlineCount = remoteUserIds.length + 1;
+
     return (
         <main
-            className="relative h-screen w-screen overflow-hidden text-slate-900 dark:text-neutral-100"
+            className="relative h-screen w-screen overflow-hidden font-body text-ink"
             style={{ background: canvasBg }}
         >
-            <header className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white/95 px-3 py-2 shadow-sm backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95">
+            <header className="glass absolute left-0 right-0 top-0 z-30 flex items-center justify-between gap-3 border-b border-hairline px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <button
                         type="button"
                         onClick={leaveRoom}
-                        className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
                     >
                         <ArrowLeft size={16} />
                         Rooms
                     </button>
-                    <span className="text-slate-300 dark:text-neutral-600">
-                        |
+                    <span className="text-ink-faint">|</span>
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[var(--color-indigo)] text-[13px] font-bold text-[#0a0c12]">
+                        V
                     </span>
-                    <span className="truncate text-sm font-medium text-slate-800 dark:text-neutral-100">
+                    <span className="coord truncate">
                         {slug || "room"}
                     </span>
                 </div>
+
+                <div
+                    className="flex items-center gap-2 rounded-full border border-hairline bg-white/[0.03] px-3 py-1"
+                    aria-label="Presence"
+                >
+                    <span className="relative flex h-2 w-2">
+                        {connected && (
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-mint)] opacity-70" />
+                        )}
+                        <span
+                            className={`relative inline-flex h-2 w-2 rounded-full ${
+                                connected
+                                    ? "bg-[var(--color-mint)]"
+                                    : "bg-ink-faint"
+                            }`}
+                        />
+                    </span>
+
+                    {remoteUsers.length > 0 && (
+                        <span className="flex -space-x-2">
+                            {remoteUsers.slice(0, 4).map((user) => {
+                                const label = displayName(
+                                    user.name,
+                                    user.userId
+                                );
+                                return (
+                                    <span
+                                        key={user.userId}
+                                        className="avatar border border-[#0a0c12] text-[9px]"
+                                        style={{
+                                            height: "1.25rem",
+                                            width: "1.25rem",
+                                            background: colorForUser(
+                                                user.userId
+                                            ),
+                                            color: "#0a0c12",
+                                        }}
+                                        title={label}
+                                    >
+                                        {initialsFor(label)}
+                                    </span>
+                                );
+                            })}
+                        </span>
+                    )}
+
+                    <span className="font-mono text-[11px] text-ink-dim">
+                        {reconnecting
+                            ? "Reconnecting…"
+                            : connected
+                              ? remoteUserIds.length > 0
+                                  ? `${onlineCount} online`
+                                  : "just you"
+                              : "offline"}
+                    </span>
+                </div>
             </header>
+            {wsError && (
+                <div
+                    className="absolute left-1/2 top-14 z-30 flex max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-xs text-red-200"
+                    role="alert"
+                >
+                    <span>{wsError}</span>
+                    <button
+                        type="button"
+                        onClick={reconnect}
+                        className="shrink-0 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 font-medium text-red-100 transition-colors hover:bg-red-500/20"
+                    >
+                        Reconnect
+                    </button>
+                </div>
+            )}
             <section
-                className="absolute left-1/2 bottom-5 z-20 -translate-x-1/2 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1 py-1.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+                className="glass absolute left-1/2 bottom-5 z-20 -translate-x-1/2 flex items-center gap-0.5 rounded-2xl px-1.5 py-1.5"
                 aria-label="Drawing tools"
             >
                 {TOOLBAR_TOOLS.map((item) => (
@@ -2204,10 +2647,10 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                         key={item.id}
                         type="button"
                         title={item.label}
-                        className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-full transition ${
+                        className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-xl transition-colors ${
                             tool === item.id
-                                ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                : "text-slate-600 hover:bg-slate-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                                ? "bg-[var(--color-indigo)] text-[#0a0c12]"
+                                : "text-ink-dim hover:bg-white/5 hover:text-ink"
                         }`}
                         onClick={() => {
                             if (item.id !== "text") {
@@ -2222,15 +2665,15 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     </button>
                 ))}
 
-                <div className="mx-1 h-6 w-px bg-slate-200 dark:bg-neutral-800" />
+                <div className="mx-1 h-6 w-px bg-[var(--color-hairline)]" />
 
                 <button
                     type="button"
                     title="Undo (Ctrl+Z)"
-                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-full transition ${
+                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-xl transition-colors ${
                         canUndo
-                            ? "text-slate-600 hover:bg-slate-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
-                            : "text-slate-300 dark:text-neutral-700 cursor-not-allowed"
+                            ? "text-ink-dim hover:bg-white/5 hover:text-ink"
+                            : "text-ink-faint cursor-not-allowed"
                     }`}
                     onClick={undo}
                     disabled={!canUndo}
@@ -2240,10 +2683,10 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                 <button
                     type="button"
                     title="Redo (Ctrl+Shift+Z)"
-                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-full transition ${
+                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-xl transition-colors ${
                         canRedo
-                            ? "text-slate-600 hover:bg-slate-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
-                            : "text-slate-300 dark:text-neutral-700 cursor-not-allowed"
+                            ? "text-ink-dim hover:bg-white/5 hover:text-ink"
+                            : "text-ink-faint cursor-not-allowed"
                     }`}
                     onClick={redo}
                     disabled={!canRedo}
@@ -2253,9 +2696,9 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
             </section>
 
             {((tool !== "select" && tool !== "hand") || selectedId) && (
-                <aside className="absolute left-3 top-14 z-20 w-52 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:bg-neutral-900 dark:border-neutral-800">
+                <aside className="glass absolute left-3 top-16 z-20 w-52 space-y-3 rounded-2xl p-3">
                     <div>
-                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                        <span className="coord mb-1.5 block uppercase tracking-wider">
                             Stroke
                         </span>
                         <div className="grid grid-cols-4 gap-4 p-2">
@@ -2265,8 +2708,8 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                     type="button"
                                     className={`h-6 w-6 rounded-full border transition hover:scale-110 ${
                                         color === swatch
-                                            ? "border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-500/30"
-                                            : "border-slate-200 dark:border-neutral-700"
+                                            ? "border-[var(--color-indigo)] ring-2 ring-[var(--color-indigo)]/30"
+                                            : "border-hairline"
                                     }`}
                                     style={{ background: swatch }}
                                     onClick={() => {
@@ -2301,15 +2744,15 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     </div>
 
                     <div>
-                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                        <span className="coord mb-1.5 block uppercase tracking-wider">
                             Background
                         </span>
                         <button
                             type="button"
-                            className={`rounded-md border px-3 py-1 text-xs font-medium shadow-inner shadow-slate-200 transition ${
+                            className={`rounded-md border px-3 py-1 text-xs font-medium transition ${
                                 fillDropperActive
-                                    ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                    : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                    ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
+                                    : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
                             }`}
                             onClick={toggleFill}
                         >
@@ -2318,7 +2761,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     </div>
 
                     <div>
-                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                        <span className="coord mb-1.5 block uppercase tracking-wider">
                             Stroke width
                         </span>
                         <div className="flex items-center gap-2">
@@ -2333,8 +2776,8 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                     type="button"
                                     className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition ${
                                         thickness === btn.value
-                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                            ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
+                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         setThickness(btn.value);
@@ -2369,13 +2812,62 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                         </div>
                     </div>
 
-                    {(tool === "text" ||
-                        (selectedId &&
-                            elementsRef.current.find(
-                                (el) => el.id === selectedId
-                            )?.type === "text")) && (
+                    {(isShapeType(tool) ||
+                        isShapeType(
+                            selectedId
+                                ? elementsRef.current.find(
+                                      (el) => el.id === selectedId
+                                  )?.type
+                                : undefined
+                        )) && (
                         <div>
-                            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                            <span className="coord mb-1.5 block uppercase tracking-wider">
+                                Stroke style
+                            </span>
+                            <div className="flex items-center gap-2">
+                                {STROKE_STYLE_OPTIONS.map((option) => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        className={`flex-1 rounded-md border py-1.5 text-xs font-medium transition ${
+                                            strokeStyle === option.id
+                                                ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
+                                                : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
+                                        }`}
+                                        onClick={() => {
+                                            setStrokeStyle(option.id);
+                                            if (selectedId) {
+                                                const el =
+                                                    elementsRef.current.find(
+                                                        (e) =>
+                                                            e.id === selectedId
+                                                    );
+                                                if (el && isShapeType(el.type)) {
+                                                    updateElement({
+                                                        ...el,
+                                                        strokeStyle: option.id,
+                                                    });
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {(tool === "text" ||
+                        tool === "sticky" ||
+                        (selectedId &&
+                            ["text", "sticky"].includes(
+                                elementsRef.current.find(
+                                    (el) => el.id === selectedId
+                                )?.type ?? ""
+                            ))) && (
+                        <div>
+                            <span className="coord mb-1.5 block uppercase tracking-wider">
                                 Font family
                             </span>
                             <div className="flex flex-col gap-1">
@@ -2385,8 +2877,8 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                         type="button"
                                         className={`rounded-md px-2.5 py-1 text-left text-xs font-medium transition ${
                                             fontFamily === font.value
-                                                ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                                : "text-slate-600 hover:bg-slate-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                                ? "bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
+                                                : "text-ink-dim hover:bg-white/5 hover:text-ink"
                                         }`}
                                         onClick={() => {
                                             setFontFamily(font.value);
@@ -2408,7 +2900,11 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                                     elementsRef.current.find(
                                                         (e) => e.id === selId
                                                     );
-                                                if (el && el.type === "text") {
+                                                if (
+                                                    el &&
+                                                    (el.type === "text" ||
+                                                        el.type === "sticky")
+                                                ) {
                                                     updateElement({
                                                         ...el,
                                                         fontFamily: font.value,
@@ -2427,8 +2923,8 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                     type="button"
                                     className={`flex py-2 flex-1 cursor-pointer  items-center justify-center rounded-md border text-xs font-medium transition ${
                                         fontWeight === "bold"
-                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                            ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
+                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         const newWeight =
@@ -2452,7 +2948,11 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                             const el = elementsRef.current.find(
                                                 (e) => e.id === selId
                                             );
-                                            if (el && el.type === "text") {
+                                            if (
+                                                el &&
+                                                (el.type === "text" ||
+                                                    el.type === "sticky")
+                                            ) {
                                                 updateElement({
                                                     ...el,
                                                     fontWeight: newWeight,
@@ -2469,8 +2969,8 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                     type="button"
                                     className={`flex  flex-1 cursor-pointer py-2 items-center justify-center rounded-md border text-xs font-medium transition ${
                                         fontStyle === "italic"
-                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                            ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
+                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         const newStyle =
@@ -2494,7 +2994,11 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                             const el = elementsRef.current.find(
                                                 (e) => e.id === selId
                                             );
-                                            if (el && el.type === "text") {
+                                            if (
+                                                el &&
+                                                (el.type === "text" ||
+                                                    el.type === "sticky")
+                                            ) {
                                                 updateElement({
                                                     ...el,
                                                     fontStyle: newStyle,
@@ -2511,8 +3015,8 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                     type="button"
                                     className={`flex flex-1 cursor-pointer py-2 items-center justify-center rounded-md border text-xs font-medium transition ${
                                         textDecoration === "underline"
-                                            ? "border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                                            ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
+                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         const newDecoration =
@@ -2537,7 +3041,11 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                                             const el = elementsRef.current.find(
                                                 (e) => e.id === selId
                                             );
-                                            if (el && el.type === "text") {
+                                            if (
+                                                el &&
+                                                (el.type === "text" ||
+                                                    el.type === "sticky")
+                                            ) {
                                                 updateElement({
                                                     ...el,
                                                     textDecoration:
@@ -2556,10 +3064,10 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     )}
                 </aside>
             )}
-            <div className="absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="glass absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-xl">
                 <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-l-lg text-slate-600 transition hover:bg-slate-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    className="flex h-8 w-8 items-center justify-center rounded-l-xl text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
                     onClick={() => setZoom((z) => Math.max(10, z - 10))}
                     aria-label="Zoom out"
                 >
@@ -2567,14 +3075,14 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                 </button>
                 <button
                     type="button"
-                    className="flex h-8 min-w-[52px] items-center justify-center border-x border-slate-200 px-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    className="flex h-8 min-w-[52px] items-center justify-center border-x border-hairline px-2 font-mono text-xs font-medium text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
                     onClick={() => setZoom(100)}
                 >
                     {zoom}%
                 </button>
                 <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-r-lg text-slate-600 transition hover:bg-slate-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    className="flex h-8 w-8 items-center justify-center rounded-r-xl text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
                     onClick={() => setZoom((z) => Math.min(500, z + 10))}
                     aria-label="Zoom in"
                 >
@@ -2584,7 +3092,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
             <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2">
                 <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-indigo-500 shadow-sm transition hover:bg-slate-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-indigo-300 dark:hover:bg-neutral-800"
+                    className="glass flex h-8 w-8 items-center justify-center rounded-xl text-[var(--color-indigo)] transition-colors hover:bg-white/5"
                     aria-label="Help"
                 >
                     <HelpCircle size={18} />
@@ -2596,12 +3104,23 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                     value={textEditor.text}
                     spellCheck={false}
                     rows={Math.max(1, textEditorLines.length)}
-                    className="absolute z-30 resize-none bg-transparent px-0 py-0 leading-tight outline-none"
+                    className="absolute z-30 resize-none leading-tight outline-none"
                     style={{
                         left: textEditor.screenX,
                         top: textEditor.screenY,
                         width: textEditor.width ?? undefined,
                         height: textEditor.height ?? undefined,
+                        boxSizing: "border-box",
+                        // A sticky note hides its canvas element while being
+                        // edited (see editingElementId in the draw loop), so
+                        // this overlay repaints the card itself — background,
+                        // padding, radius, shadow — to match drawStickyElement.
+                        background: textEditor.fill ?? "transparent",
+                        padding: textEditor.fill ? "12px" : 0,
+                        borderRadius: textEditor.fill ? 14 : 0,
+                        boxShadow: textEditor.fill
+                            ? "0 5px 14px -2px rgba(0, 0, 0, 0.35)"
+                            : "none",
                         color: getThemeAwareCanvasColor(
                             textEditor.color,
                             isDark
@@ -2652,6 +3171,83 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                 onPointerCancel={handlePointerUp}
                 onDoubleClick={handleDoubleClick}
             />
+
+            {/* Live multiplayer presence overlay. World coordinates from the
+                store are mapped through the same pan/zoom transform the canvas
+                uses (screenX = (worldX + pan.x) * scale), so remote cursors and
+                selection outlines track correctly at every viewer's viewport. */}
+            <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+                {remoteSelections.map((selection) => {
+                    const accent = colorForUser(selection.userId);
+                    const scale = zoom / 100;
+                    return selection.elementIds.map((elementId) => {
+                        const element = elements.find(
+                            (el) => el.id === elementId
+                        );
+                        if (!element) {
+                            return null;
+                        }
+                        const { minX, minY, maxX, maxY } =
+                            getElementBounds(element);
+                        const left = (minX + pan.x) * scale;
+                        const top = (minY + pan.y) * scale;
+                        const width = (maxX - minX) * scale;
+                        const height = (maxY - minY) * scale;
+                        return (
+                            <div
+                                key={`${selection.userId}:${elementId}`}
+                                className="absolute rounded"
+                                style={{
+                                    left: 0,
+                                    top: 0,
+                                    width: width + 12,
+                                    height: height + 12,
+                                    transform: `translate(${left - 6}px, ${top - 6}px)`,
+                                    border: `2px solid ${accent}`,
+                                    boxShadow: `0 0 0 1px ${accent}33`,
+                                }}
+                            />
+                        );
+                    });
+                })}
+
+                {remoteCursors.map((cursor) => {
+                    const accent = colorForUser(cursor.userId);
+                    const scale = zoom / 100;
+                    const x = (cursor.x + pan.x) * scale;
+                    const y = (cursor.y + pan.y) * scale;
+                    return (
+                        <div
+                            key={cursor.userId}
+                            className="absolute left-0 top-0 flex items-start gap-1"
+                            style={{
+                                transform: `translate(${x}px, ${y}px)`,
+                                transition: "transform 80ms linear",
+                                willChange: "transform",
+                            }}
+                        >
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill={accent}
+                                stroke="#0a0c12"
+                                strokeWidth="1.5"
+                                strokeLinejoin="round"
+                                className="drop-shadow"
+                            >
+                                <path d="M5 3l6 17 2.5-6.5L20 11 5 3z" />
+                            </svg>
+                            <span
+                                className="cursor-tag mt-2 max-w-[120px] truncate"
+                                style={{ background: accent }}
+                            >
+                                {displayName(cursor.name, cursor.userId)}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
         </main>
     );
 }
@@ -2659,7 +3255,45 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
 
 export default function WhiteboardPage() {
     const params = useParams();
-    const slug = typeof params.slug === "string" ? params.slug : "";
+    const router = useRouter();
+    const rawSlug = typeof params.slug === "string" ? params.slug : "";
+    const slug = normalizeSlug(rawSlug);
+    const [roomValid, setRoomValid] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        if (!slug) {
+            router.replace("/rooms");
+            return;
+        }
+
+        let cancelled = false;
+
+        void (async () => {
+            const res = await apiFetch(
+                `/api/v1/room/${encodeURIComponent(slug)}`
+            );
+            if (cancelled) return;
+            if (!res.ok) {
+                router.replace("/rooms");
+                return;
+            }
+            setRoomValid(true);
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [slug, router]);
+
+    if (!slug || roomValid !== true) {
+        return (
+            <AuthGuard>
+                <main className="flex h-screen items-center justify-center font-body text-ink-dim">
+                    Loading room…
+                </main>
+            </AuthGuard>
+        );
+    }
 
     return (
         <AuthGuard>
