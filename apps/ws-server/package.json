@@ -6,7 +6,8 @@
     "scripts": {
         "dev": "bun --hot index.ts",
         "build": "bun build",
-        "start": "bun start"
+        "start": "bun start",
+        "check-types": "tsc --noEmit"
     },
     "devDependencies": {
         "@types/bun": "^1.3.4",

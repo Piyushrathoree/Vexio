@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
     ChevronDown,
     DoorOpen,
-    Layers,
     LogOut,
     Menu,
     User,
@@ -22,10 +21,10 @@ const marketingLinks: NavLink[] = [
     { label: "Why Vexio", href: "#why" },
 ];
 
-const productLinks: NavLink[] = [
-    { label: "Rooms", href: "/rooms" },
-    { label: "Whiteboards", href: "/whiteboard" },
-];
+// `/whiteboard` used to be a second, near-duplicate boards list; it now just
+// redirects to `/rooms`, so a single entry covers both. "Boards" is the noun
+// used across the dashboard and the in-board chrome.
+const productLinks: NavLink[] = [{ label: "Boards", href: "/rooms" }];
 
 const focusRing = "focus-ring";
 const pressable =
@@ -35,8 +34,6 @@ function productIcon(href: string) {
     switch (href) {
         case "/rooms":
             return DoorOpen;
-        case "/whiteboard":
-            return Layers;
         default:
             return null;
     }

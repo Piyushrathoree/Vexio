@@ -8,7 +8,10 @@ declare global {
 }
 
 const getConnectionString = () => {
-    const url = process.env.DATABASE_URL!;
+    // Prefer DIRECT_URL (stable, non-pooled) since that's what the app is
+    // documented to use; DATABASE_URL is reserved for a pooler and only
+    // used as a fallback when DIRECT_URL isn't set.
+    const url = (process.env.DIRECT_URL ?? process.env.DATABASE_URL)!;
     const params = new URLSearchParams(
         url.includes("?") ? url.split("?")[1] : ""
     );

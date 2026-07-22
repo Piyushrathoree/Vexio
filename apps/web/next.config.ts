@@ -5,10 +5,6 @@ import { fileURLToPath } from "url";
 
 config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../.env") });
 
-const nextConfig: NextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

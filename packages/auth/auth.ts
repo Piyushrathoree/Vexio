@@ -4,6 +4,7 @@ import { bearer } from "better-auth/plugins";
 import "@repo/common";
 import { client } from "@repo/db";
 import { sendEmail } from "./email";
+import { passwordResetEmailTemplate, verificationEmailTemplate } from "./email-templates";
 
 const webUrl = process.env.WEB_URL ?? "http://localhost:3001";
 
@@ -31,14 +32,30 @@ export const auth = betterAuth({
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.BETTER_AUTH_URL,
     trustedOrigins: [webUrl],
+    // In production the web app and auth API live on different subdomains of
+    // a shared parent domain, so session cookies must be scoped to the parent
+    // domain (e.g. ".vexio.com") for Next.js middleware to see them. Gated on
+    // COOKIE_DOMAIN so local dev (web + API both on localhost) is unaffected.
+    ...(process.env.COOKIE_DOMAIN
+        ? {
+              advanced: {
+                  crossSubDomainCookies: {
+                      enabled: true,
+                      domain: process.env.COOKIE_DOMAIN,
+                  },
+              },
+          }
+        : {}),
     emailVerification: {
         sendOnSignUp: true,
         autoSignInAfterVerification: true,
         sendVerificationEmail: async ({ user, url }) => {
+            const { subject, html, text } = verificationEmailTemplate(url);
             void sendEmail({
                 to: user.email,
-                subject: "Verify your Vexio email",
-                text: `Click to verify your email: ${url}`,
+                subject,
+                html,
+                text,
             }).catch((err) => {
                 console.error("Failed to send verification email:", err);
             });
@@ -46,17 +63,27 @@ export const auth = betterAuth({
     },
     emailAndPassword: {
         enabled: true,
-        // NOTE: off for local dev so login works without SMTP. Before production,
-        // set this to `true` AND configure SMTP_* in .env (see WEBSOCKET_FIXES.md),
-        // otherwise users can't verify their email and real-time will break.
+        // NOTE: off for local dev so login works without email delivery configured.
+        // Now that email delivery goes through Resend (see email.ts), this can be
+        // flipped to `true` once RESEND_API_KEY / RESEND_FROM_EMAIL are confirmed
+        // working in the target environment — otherwise users can't verify their
+        // email and real-time will break.
         requireEmailVerification: false,
         autoSignIn: false,
         sendResetPassword: async ({ user, url }) => {
-            await sendEmail({
-                to: user.email,
-                subject: "Reset your Vexio password",
-                text: `Click to reset your password: ${url}`,
-            });
+            try {
+                const { subject, html, text } = passwordResetEmailTemplate(url);
+                await sendEmail({
+                    to: user.email,
+                    subject,
+                    html,
+                    text,
+                });
+            } catch (err) {
+                // Mirror the verification path's resilience: a mail failure here
+                // should never 500 the auth handler.
+                console.error("Failed to send password reset email:", err);
+            }
         },
     },
     socialProviders,

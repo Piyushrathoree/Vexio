@@ -49,4 +49,3 @@ Packages/db/src/generated/*
 .cursor
 
 scratch-wstest.mjs
-WEBSOCKET_FIXES.md

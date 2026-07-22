@@ -1,39 +1,76 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
+import { emailLayout } from "./email-templates";
 
-const getTransporter = () => {
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+let resendClient: Resend | null = null;
+let warnedMissingKey = false;
 
-    if (!user || !pass) {
-        throw new Error("SMTP_USER and SMTP_PASS are not configured");
+const getResendClient = (): Resend | null => {
+    const apiKey = process.env.RESEND_API_KEY;
+
+    if (!apiKey) {
+        if (!warnedMissingKey) {
+            console.warn(
+                "[email] RESEND_API_KEY is not set — emails will not be sent. " +
+                    "Configure RESEND_API_KEY and RESEND_FROM_EMAIL to enable email delivery.",
+            );
+            warnedMissingKey = true;
+        }
+        return null;
     }
 
-    return nodemailer.createTransport({
-        host: process.env.SMTP_HOST ?? "smtp.gmail.com",
-        port: Number(process.env.SMTP_PORT ?? 587),
-        secure: process.env.SMTP_SECURE === "true",
-        auth: { user, pass },
-    });
+    if (!resendClient) {
+        resendClient = new Resend(apiKey);
+    }
+
+    return resendClient;
 };
 
 export const sendEmail = async ({
     to,
     subject,
     text,
+    html,
 }: {
     to: string;
     subject: string;
-    text: string;
+    text?: string;
+    html?: string;
 }) => {
-    const from =
-        process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "Vexio <noreply@localhost>";
+    const client = getResendClient();
 
-    const transporter = getTransporter();
+    // Gracefully no-op when Resend isn't configured so signup/reset flows
+    // never fail just because email delivery isn't set up (e.g. local dev).
+    if (!client) {
+        return;
+    }
+
+    const from = process.env.RESEND_FROM_EMAIL ?? "Vexio <onboarding@resend.dev>";
+
+    // Fall back to the generic branded layout when a caller only provides
+    // plain text (no dedicated template was built for that email).
+    const resolvedHtml =
+        html ??
+        emailLayout({
+            title: subject,
+            heading: subject,
+            bodyHtml: text ?? "",
+            ctaLabel: "Open Vexio",
+            ctaUrl: process.env.WEB_URL ?? "http://localhost:3001",
+        });
 
     try {
-        await transporter.sendMail({ from, to, subject, text });
+        const { error } = await client.emails.send({
+            from,
+            to,
+            subject,
+            html: resolvedHtml,
+            text,
+        });
+
+        if (error) {
+            console.error("Failed to send email:", error);
+        }
     } catch (err) {
         console.error("Failed to send email:", err);
-        throw new Error("Failed to send email");
     }
 };

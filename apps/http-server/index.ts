@@ -14,7 +14,9 @@ const webUrl = process.env.WEB_URL ?? "http://localhost:3001";
 app.use(
     cors({
         origin: webUrl,
-        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        // PATCH is required by the room-rename and member-role routes; without
+        // it the browser's preflight fails and both silently break.
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         credentials: true,
         exposedHeaders: ["set-auth-token"],
     })

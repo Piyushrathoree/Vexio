@@ -53,7 +53,11 @@ export default function SignupPage() {
             return;
         }
 
-        setMessage("Check your email to verify your account, then sign in.");
+        // Verification is NOT required to sign in (packages/auth/auth.ts sets
+        // requireEmailVerification: false), and sign-up creates no session, so
+        // the only next step is to sign in. Telling people to wait for a
+        // verification email stalls them on a step that doesn't exist.
+        setMessage("Account created. Sign in to get started.");
     };
 
     return (

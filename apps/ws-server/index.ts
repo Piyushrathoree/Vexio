@@ -1,5 +1,5 @@
 import "@repo/common";
-import { getRoomBySlug, getRoomSnapshot } from "@repo/db";
+import { ensureMember, getRoomBySlug, getRoomSnapshot } from "@repo/db";
 import { randomUUID } from "crypto";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
@@ -14,7 +14,7 @@ import {
     type RoomMaps,
 } from "./middleware/helper";
 import verifyUser from "./middleware/verify";
-import type { ClientMessage } from "./types";
+import type { ClientMessage, RoomRole } from "./types";
 
 // --- Limits (bound memory / DoS) ------------------------------------------
 // Hard cap on a single inbound frame. Also enforced at the ws layer via
@@ -152,6 +152,11 @@ const leaveRoom = async (connectionId: string, slug: string) => {
     }
 };
 
+// Roles are resolved once at join time and cached on the room session, so the
+// write path stays synchronous — no DB round trip per element.
+const isViewer = (conn: ConnectionType | undefined, slug: string): boolean =>
+    conn?.rooms.get(slug)?.role === "VIEWER";
+
 const handleJoinRoom = async (
     ws: WebSocket,
     connectionId: string,
@@ -173,10 +178,23 @@ const handleJoinRoom = async (
         return;
     }
 
+    // Open-by-link, mirroring POST /api/v1/room/:slug/join on the HTTP side:
+    // opening a board enrols you as an EDITOR. `ensureMember` is idempotent and
+    // never downgrades an existing ADMIN/VIEWER.
+    let role: RoomRole = "EDITOR";
+    try {
+        const member = await ensureMember(room.id, conn.userId, "EDITOR");
+        role = member.role as RoomRole;
+    } catch (err) {
+        console.error(`failed to enrol ${conn.userId} in room ${slug}`, err);
+        send(ws, { type: "error", message: "failed to join room" });
+        return;
+    }
+
     const alreadyPresent =
         userConnectionCountInRoom(connections, slug, conn.userId) > 0;
 
-    conn.rooms.set(slug, { roomId: room.id, slug });
+    conn.rooms.set(slug, { roomId: room.id, slug, role });
     roomIds.set(slug, room.id);
 
     if (!roomState.has(slug)) {
@@ -377,6 +395,14 @@ wss.on("connection", async (ws, request) => {
                     return;
                 }
 
+                if (isViewer(conn, slug)) {
+                    send(ws, {
+                        type: "error",
+                        message: "you have view-only access to this board",
+                    });
+                    return;
+                }
+
                 const element = parsed.element;
                 if (!isElementLike(element)) {
                     send(ws, { type: "error", message: "invalid element" });
@@ -436,6 +462,14 @@ wss.on("connection", async (ws, request) => {
                     return;
                 }
 
+                if (isViewer(conn, slug)) {
+                    send(ws, {
+                        type: "error",
+                        message: "you have view-only access to this board",
+                    });
+                    return;
+                }
+
                 const element = parsed.element;
                 if (!isElementLike(element)) {
                     send(ws, { type: "error", message: "invalid element" });
@@ -477,6 +511,14 @@ wss.on("connection", async (ws, request) => {
 
                 if (!slug || !conn?.rooms.has(slug)) {
                     send(ws, { type: "error", message: "join room first" });
+                    return;
+                }
+
+                if (isViewer(conn, slug)) {
+                    send(ws, {
+                        type: "error",
+                        message: "you have view-only access to this board",
+                    });
                     return;
                 }
 

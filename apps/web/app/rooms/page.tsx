@@ -1,33 +1,25 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-    ArrowRight,
-    Plus,
-    RefreshCw,
-    Search,
-    Sparkles,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Loader2, Plus, RefreshCw, Search } from "lucide-react";
 import { AuthGuard } from "../../components/AuthGuard";
 import Navbar from "../../components/Navbar";
-import { apiFetch } from "../../lib/api";
-
-type Room = {
-    id: number;
-    slug: string;
-    createdAt: string;
-};
+import { BoardCard } from "../../components/rooms/BoardCard";
+import { parseBoardRef } from "../../components/rooms/board-ref";
+import { MembersModal } from "../../components/rooms/MembersModal";
+import { ShareModal } from "../../components/rooms/ShareModal";
+import { useSession } from "../../lib/auth-client";
+import {
+    createRoom as createRoomRequest,
+    fetchRooms,
+    joinRoom,
+    type Room,
+    type RoomSummary,
+} from "../../lib/rooms-api";
 
 type SortKey = "newest" | "oldest" | "az";
-
-const ACCENTS = [
-    "var(--color-indigo)",
-    "var(--color-violet)",
-    "var(--color-mint)",
-    "var(--color-coral)",
-];
+type Scope = "all" | "owned" | "shared";
 
 const SORTS: { key: SortKey; label: string }[] = [
     { key: "newest", label: "Newest" },
@@ -35,8 +27,15 @@ const SORTS: { key: SortKey; label: string }[] = [
     { key: "az", label: "A–Z" },
 ];
 
-const SLUG_PATTERN = /^[a-z0-9-]+$/;
+// Boards can genuinely be shared now (RoomMember + invites), so ownership is a
+// real axis to slice on rather than decoration.
+const SCOPES: { key: Scope; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "owned", label: "Owned" },
+    { key: "shared", label: "Shared" },
+];
 
+const SLUG_PATTERN = /^[a-z0-9-]+$/;
 const isValidSlug = (slug: string) =>
     slug.length >= 3 && slug.length <= 64 && SLUG_PATTERN.test(slug);
 
@@ -46,20 +45,15 @@ const btnPrimary =
 const btnGhost =
     "btn-ghost focus-ring inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 text-sm disabled:pointer-events-none disabled:opacity-50";
 
-function formatCreatedAt(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-    });
-}
-
 function RoomsContent() {
     const router = useRouter();
+    const { data: session } = useSession();
+    const currentUserId = session?.user?.id;
 
-    const [rooms, setRooms] = useState<Room[]>([]);
+    const createInputRef = useRef<HTMLInputElement>(null);
+    const openInputRef = useRef<HTMLInputElement>(null);
+
+    const [rooms, setRooms] = useState<RoomSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
 
@@ -68,22 +62,29 @@ function RoomsContent() {
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState("");
 
+    const [openValue, setOpenValue] = useState("");
+    const [opening, setOpening] = useState(false);
+    const [openError, setOpenError] = useState("");
+
     const [query, setQuery] = useState("");
+    const [scope, setScope] = useState<Scope>("all");
     const [sortBy, setSortBy] = useState<SortKey>("newest");
+
+    const [shareRoom, setShareRoom] = useState<RoomSummary | null>(null);
+    const [membersRoom, setMembersRoom] = useState<RoomSummary | null>(null);
 
     const loadRooms = useCallback(async () => {
         setLoading(true);
         setLoadError("");
 
-        const res = await apiFetch("/api/v1/rooms");
-        if (!res.ok) {
-            setLoadError(`Couldn't load your boards — ${res.status}.`);
+        const result = await fetchRooms();
+        if (!result.ok) {
+            setLoadError(`Couldn't load your boards — ${result.message}`);
             setLoading(false);
             return;
         }
 
-        const json = await res.json();
-        setRooms(json.data?.rooms ?? []);
+        setRooms(result.data.rooms ?? []);
         setLoading(false);
     }, []);
 
@@ -93,65 +94,137 @@ function RoomsContent() {
 
     const slugNormalized = newSlug.trim().toLowerCase();
     const slugInvalid =
-        slugTouched &&
-        slugNormalized.length > 0 &&
-        !isValidSlug(slugNormalized);
+        slugTouched && slugNormalized.length > 0 && !isValidSlug(slugNormalized);
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         setSlugTouched(true);
 
-        if (!isValidSlug(slugNormalized)) {
-            return;
-        }
+        if (!isValidSlug(slugNormalized)) return;
 
         setCreateError("");
         setCreating(true);
 
-        const res = await apiFetch("/api/v1/room", {
-            method: "POST",
-            body: JSON.stringify({ slug: slugNormalized }),
-        });
+        const result = await createRoomRequest(slugNormalized);
 
-        setCreating(false);
-
-        if (!res.ok) {
-            const json = await res.json().catch(() => null);
+        if (!result.ok) {
+            setCreating(false);
             setCreateError(
-                json?.message ?? `Couldn't create that board — ${res.status}.`
+                result.status === 409
+                    ? "A board already uses that slug — pick another."
+                    : result.message
             );
             return;
         }
 
-        const json = await res.json();
-        const room = json.data?.room as Room | undefined;
-        if (room?.slug) {
-            router.push(`/whiteboard/${room.slug}`);
+        if (result.data.room?.slug) {
+            router.push(`/whiteboard/${result.data.room.slug}`);
+        } else {
+            setCreating(false);
         }
     };
 
-    const goToSlug = useCallback(
-        (slug: string) => {
-            const s = slug.trim().toLowerCase();
-            if (!s) return;
-            router.push(`/whiteboard/${s}`);
+    // Joining is what makes an open-by-link actually work: it enrols the caller
+    // as an EDITOR the first time and is a no-op afterwards, so the board page
+    // no longer 403s on arrival.
+    const openBoardRef = useCallback(
+        async (raw: string) => {
+            // This can be triggered from the no-match panel far down the page,
+            // so failures pull focus back to the field the message renders under.
+            const fail = (message: string) => {
+                setOpening(false);
+                setOpenError(message);
+                openInputRef.current?.focus();
+            };
+
+            const ref = parseBoardRef(raw);
+            if (!ref) {
+                fail("Paste a board link, or type a board's slug.");
+                return;
+            }
+
+            if (ref.kind === "invite") {
+                setOpening(true);
+                setOpenError("");
+                router.push(`/invite/${encodeURIComponent(ref.token)}`);
+                return;
+            }
+
+            if (!isValidSlug(ref.slug)) {
+                fail(
+                    "That isn't a board slug — lowercase letters, numbers and hyphens, 3–64 characters."
+                );
+                return;
+            }
+
+            setOpening(true);
+            setOpenError("");
+
+            const result = await joinRoom(ref.slug);
+
+            if (!result.ok) {
+                fail(
+                    result.status === 404
+                        ? `No board called “${ref.slug}”. Check the link, or ask for a fresh one.`
+                        : result.status === 403
+                          ? "That board isn't open to you — ask its owner for an invite link."
+                          : result.message
+                );
+                return;
+            }
+
+            router.push(`/whiteboard/${result.data.room.slug}`);
         },
         [router]
     );
 
-    const handleOpen = (e: React.FormEvent) => {
+    const handleOpenSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        goToSlug(query);
+        void openBoardRef(openValue);
     };
+
+    const handleRoomRenamed = useCallback(
+        (previousSlug: string, updated: Room) => {
+            setRooms((prev) =>
+                prev.map((r) =>
+                    r.slug === previousSlug ? { ...r, ...updated } : r
+                )
+            );
+        },
+        []
+    );
+
+    const handleRoomLeft = useCallback((slug: string) => {
+        setRooms((prev) => prev.filter((r) => r.slug !== slug));
+    }, []);
+
+    const handleRoomDeleted = useCallback((slug: string) => {
+        setRooms((prev) => prev.filter((r) => r.slug !== slug));
+    }, []);
+
+    const isOwned = useCallback(
+        (room: RoomSummary) =>
+            room.role === "ADMIN" ||
+            (!!currentUserId && room.adminId === currentUserId),
+        [currentUserId]
+    );
 
     const normalizedQuery = query.trim().toLowerCase();
 
     const visibleRooms = useMemo(() => {
-        const filtered = normalizedQuery
-            ? rooms.filter((r) =>
-                  r.slug.toLowerCase().includes(normalizedQuery)
-              )
-            : rooms;
+        let filtered = rooms;
+
+        if (scope !== "all") {
+            filtered = filtered.filter((r) =>
+                scope === "owned" ? isOwned(r) : !isOwned(r)
+            );
+        }
+
+        if (normalizedQuery) {
+            filtered = filtered.filter((r) =>
+                r.slug.toLowerCase().includes(normalizedQuery)
+            );
+        }
 
         const sorted = [...filtered];
         if (sortBy === "newest") {
@@ -170,15 +243,14 @@ function RoomsContent() {
             sorted.sort((a, b) => a.slug.localeCompare(b.slug));
         }
         return sorted;
-    }, [rooms, normalizedQuery, sortBy]);
+    }, [rooms, scope, isOwned, normalizedQuery, sortBy]);
 
+    const narrowed = scope !== "all" || normalizedQuery.length > 0;
     const countLabel = loading
-        ? "Loading…"
-        : normalizedQuery
-          ? `${visibleRooms.length} of ${rooms.length} match${
-                rooms.length === 1 ? "" : "es"
-            }`
-          : `${rooms.length} board${rooms.length === 1 ? "" : "s"}`;
+        ? "// loading"
+        : narrowed
+          ? `// ${visibleRooms.length} of ${rooms.length} board${rooms.length === 1 ? "" : "s"}`
+          : `// ${rooms.length} board${rooms.length === 1 ? "" : "s"}`;
 
     const noMatches = !loading && rooms.length > 0 && visibleRooms.length === 0;
 
@@ -188,258 +260,365 @@ function RoomsContent() {
             <div className="relative z-10 mx-auto max-w-6xl">
                 <Navbar />
                 <main className="px-4 pb-24 pt-2 sm:px-6">
-                    <div className="mt-8">
+                    <header className="mt-8">
                         <p className="coord mb-2">{"// your workspace"}</p>
                         <h1 className="font-display text-3xl font-bold tracking-tight text-ink">
                             Your boards
                         </h1>
                         <p className="mt-2 max-w-xl text-sm text-ink-dim">
-                            Search, sort, or create a new board without leaving
-                            this page.
+                            Every board keeps what you draw on it. Open one from
+                            a link, or start a fresh sheet.
                         </p>
-                    </div>
+                    </header>
 
-                    <section className="card mt-8 p-5 sm:p-6">
-                        <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-start">
-                            <form onSubmit={handleCreate} className="space-y-2">
-                                <label
-                                    htmlFor="new-room-slug"
-                                    className="mb-1 flex items-center gap-2 text-sm font-medium text-ink"
-                                >
-                                    <span className="grid h-6 w-6 place-items-center rounded-lg border border-hairline bg-white/[0.03] text-indigo">
-                                        <Plus className="h-3.5 w-3.5" />
-                                    </span>
-                                    Start a board
-                                </label>
-                                <div className="flex flex-col gap-2 sm:flex-row">
-                                    <input
-                                        id="new-room-slug"
-                                        type="text"
-                                        required
-                                        placeholder="new-room-slug"
-                                        value={newSlug}
-                                        onChange={(e) => {
-                                            setNewSlug(e.target.value);
-                                            if (createError) setCreateError("");
-                                        }}
-                                        onBlur={() => setSlugTouched(true)}
-                                        aria-invalid={slugInvalid}
-                                        className={`input font-mono flex-1 ${
-                                            slugInvalid
-                                                ? "border-[var(--color-coral)]"
-                                                : ""
-                                        }`}
-                                    />
-                                    <button
-                                        type="submit"
-                                        disabled={creating}
-                                        className={btnPrimary}
-                                    >
-                                        {creating ? (
-                                            "Creating…"
-                                        ) : (
-                                            <>
-                                                Create room
-                                                <ArrowRight className="h-4 w-4" />
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
-                                <p
-                                    className={`text-xs ${
+                    <section className="mt-8 grid gap-4 lg:grid-cols-2">
+                        {/* Start a board */}
+                        <form onSubmit={handleCreate} className="card p-5">
+                            <p className="coord">{"// new sheet"}</p>
+                            <label
+                                htmlFor="new-room-slug"
+                                className="mt-1 flex items-center gap-2 text-sm font-medium text-ink"
+                            >
+                                <Plus
+                                    className="h-3.5 w-3.5 text-indigo"
+                                    aria-hidden
+                                />
+                                Start a board
+                            </label>
+
+                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                    ref={createInputRef}
+                                    id="new-room-slug"
+                                    type="text"
+                                    required
+                                    placeholder="quarterly-retro"
+                                    value={newSlug}
+                                    onChange={(e) => {
+                                        setNewSlug(e.target.value);
+                                        if (createError) setCreateError("");
+                                    }}
+                                    onBlur={() => setSlugTouched(true)}
+                                    aria-invalid={slugInvalid}
+                                    aria-describedby="new-room-slug-hint"
+                                    className={`input flex-1 font-mono ${
                                         slugInvalid
-                                            ? "text-[var(--color-coral)]"
-                                            : "text-ink-faint"
+                                            ? "border-[var(--color-coral)]"
+                                            : ""
                                     }`}
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={creating}
+                                    className={btnPrimary}
                                 >
-                                    {slugInvalid
-                                        ? "Use lowercase letters, numbers, and hyphens — 3 to 64 characters."
-                                        : "Lowercase letters, numbers, hyphens · 3–64 chars"}
-                                </p>
-                                {createError ? (
-                                    <p className="rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3 py-2 text-xs text-[var(--color-coral)]">
-                                        {createError}
-                                    </p>
-                                ) : null}
-                            </form>
-
-                            <div className="lg:w-72">
-                                <span className="mb-1 flex items-center gap-2 text-sm font-medium text-ink">
-                                    <span className="grid h-6 w-6 place-items-center rounded-lg border border-hairline bg-white/[0.03] text-ink-dim">
-                                        <Search className="h-3.5 w-3.5" />
-                                    </span>
-                                    Find a board
-                                </span>
-                                <form onSubmit={handleOpen} className="relative">
-                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search or paste a slug"
-                                        value={query}
-                                        onChange={(e) =>
-                                            setQuery(e.target.value)
-                                        }
-                                        aria-label="Search boards or open by slug"
-                                        className="input font-mono pl-9"
-                                    />
-                                </form>
-                                <p className="mt-1.5 text-xs text-ink-faint">
-                                    Press enter to open an exact slug
-                                </p>
-
-                                {rooms.length > 1 ? (
-                                    <div
-                                        className="segmented mt-3"
-                                        role="tablist"
-                                        aria-label="Sort boards"
-                                    >
-                                        {SORTS.map(({ key, label }) => (
-                                            <button
-                                                key={key}
-                                                type="button"
-                                                role="tab"
-                                                aria-selected={sortBy === key}
-                                                onClick={() => setSortBy(key)}
-                                                className={
-                                                    sortBy === key
-                                                        ? "is-active"
-                                                        : undefined
-                                                }
-                                            >
-                                                {label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                ) : null}
+                                    {creating ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                            Creating…
+                                        </>
+                                    ) : (
+                                        <>
+                                            Create
+                                            <ArrowRight className="h-4 w-4" />
+                                        </>
+                                    )}
+                                </button>
                             </div>
-                        </div>
+
+                            <p
+                                id="new-room-slug-hint"
+                                className={`mt-2 text-xs ${
+                                    slugInvalid
+                                        ? "text-[var(--color-coral)]"
+                                        : "text-ink-faint"
+                                }`}
+                            >
+                                {slugInvalid
+                                    ? "Use lowercase letters, numbers and hyphens — 3 to 64 characters."
+                                    : "Lowercase letters, numbers, hyphens · 3–64 characters"}
+                            </p>
+
+                            {createError ? (
+                                <p
+                                    role="alert"
+                                    className="mt-2 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3 py-2 text-xs text-[var(--color-coral)]"
+                                >
+                                    {createError}
+                                </p>
+                            ) : null}
+                        </form>
+
+                        {/* Open a board — link, invite, or bare slug */}
+                        <form onSubmit={handleOpenSubmit} className="card p-5">
+                            <p className="coord">{"// by link or slug"}</p>
+                            <label
+                                htmlFor="open-board-ref"
+                                className="mt-1 flex items-center gap-2 text-sm font-medium text-ink"
+                            >
+                                <ArrowRight
+                                    className="h-3.5 w-3.5 text-mint"
+                                    aria-hidden
+                                />
+                                Open a board
+                            </label>
+
+                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                    ref={openInputRef}
+                                    id="open-board-ref"
+                                    type="text"
+                                    placeholder="paste a link, or a slug"
+                                    value={openValue}
+                                    onChange={(e) => {
+                                        setOpenValue(e.target.value);
+                                        if (openError) setOpenError("");
+                                    }}
+                                    aria-describedby="open-board-hint"
+                                    className="input flex-1 font-mono"
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={opening || !openValue.trim()}
+                                    className={btnGhost}
+                                >
+                                    {opening ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                            Opening…
+                                        </>
+                                    ) : (
+                                        "Open"
+                                    )}
+                                </button>
+                            </div>
+
+                            <p
+                                id="open-board-hint"
+                                className="mt-2 text-xs text-ink-faint"
+                            >
+                                A full board link, an invite link, or just the
+                                slug — all work.
+                            </p>
+
+                            {openError ? (
+                                <p
+                                    role="alert"
+                                    className="mt-2 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3 py-2 text-xs text-[var(--color-coral)]"
+                                >
+                                    {openError}
+                                </p>
+                            ) : null}
+                        </form>
                     </section>
 
                     {loadError ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-4 py-3 text-sm text-[var(--color-coral)]">
+                        <div
+                            role="alert"
+                            className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-4 py-3 text-sm text-[var(--color-coral)]"
+                        >
                             <span>{loadError}</span>
                             <button
                                 type="button"
                                 onClick={() => void loadRooms()}
                                 className={`${btnGhost} h-8 px-3 text-xs`}
                             >
-                                <RefreshCw className="h-3 w-3" />
+                                <RefreshCw className="h-3 w-3" aria-hidden />
                                 Try again
                             </button>
                         </div>
                     ) : null}
 
                     <div className="mt-12">
-                        <p className="coord mb-4">{countLabel}</p>
+                        <div className="flex flex-col gap-3 border-b border-hairline pb-4 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="coord" aria-live="polite">
+                                {countLabel}
+                            </p>
 
-                        {loading ? (
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {[0, 1, 2, 3, 4, 5].map((i) => (
-                                    <div
-                                        key={i}
-                                        className="card h-36 animate-pulse"
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="relative w-full sm:w-48">
+                                    <Search
+                                        className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint"
+                                        aria-hidden
                                     />
-                                ))}
-                            </div>
-                        ) : rooms.length === 0 ? (
-                            <div className="card px-6 py-14 text-center sm:px-10">
-                                <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl border border-hairline bg-white/[0.03] text-indigo">
-                                    <Sparkles className="h-5 w-5" />
-                                </span>
-                                <h3 className="font-display text-lg font-bold text-ink">
-                                    No boards yet
-                                </h3>
-                                <p className="mx-auto mt-2 max-w-sm text-sm text-ink-dim">
-                                    Give it a slug in the panel above and start
-                                    sketching — your team can jump in the moment
-                                    it&apos;s live.
-                                </p>
-                            </div>
-                        ) : noMatches ? (
-                            <div className="card px-6 py-12 text-center sm:px-10">
-                                <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl border border-hairline bg-white/[0.03] text-ink-dim">
-                                    <Search className="h-5 w-5" />
-                                </span>
-                                <h3 className="font-display text-lg font-bold text-ink">
-                                    No board named &ldquo;{normalizedQuery}&rdquo;
-                                </h3>
-                                <p className="mx-auto mt-2 max-w-sm text-sm text-ink-dim">
-                                    Clear the search to see every board, or open
-                                    this exact slug if you know it exists.
-                                </p>
-                                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setQuery("")}
-                                        className={btnGhost}
-                                    >
-                                        Clear search
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => goToSlug(query)}
-                                        className={btnPrimary}
-                                    >
-                                        Open it directly
-                                        <ArrowRight className="h-4 w-4" />
-                                    </button>
+                                    <input
+                                        type="search"
+                                        placeholder="Filter by name"
+                                        value={query}
+                                        onChange={(e) =>
+                                            setQuery(e.target.value)
+                                        }
+                                        aria-label="Filter boards by name"
+                                        className="input h-9 w-full py-0 pl-9 font-mono text-xs"
+                                    />
+                                </div>
+
+                                {/* Toggle buttons, not tabs — there's no tabpanel
+                                    for a tablist to own. */}
+                                <div
+                                    className="segmented"
+                                    role="group"
+                                    aria-label="Filter boards by ownership"
+                                >
+                                    {SCOPES.map(({ key, label }) => (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            aria-pressed={scope === key}
+                                            onClick={() => setScope(key)}
+                                            className={`focus-ring cursor-pointer ${
+                                                scope === key ? "is-active" : ""
+                                            }`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div
+                                    className="segmented"
+                                    role="group"
+                                    aria-label="Sort boards"
+                                >
+                                    {SORTS.map(({ key, label }) => (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            aria-pressed={sortBy === key}
+                                            onClick={() => setSortBy(key)}
+                                            className={`focus-ring cursor-pointer ${
+                                                sortBy === key ? "is-active" : ""
+                                            }`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                        ) : (
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {visibleRooms.map((room, i) => {
-                                    const accent = ACCENTS[i % ACCENTS.length];
-                                    const roomId = `R-${String(
-                                        room.id
-                                    ).padStart(2, "0")}`;
+                        </div>
 
-                                    return (
-                                        <Link
-                                            key={room.id}
-                                            href={`/whiteboard/${room.slug}`}
-                                            className="card group relative flex h-full flex-col overflow-hidden p-5 transition-colors hover:border-white/20 hover:bg-white/[0.04] focus-ring"
+                        <div className="mt-6">
+                            {loading ? (
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {[0, 1, 2, 3, 4, 5].map((i) => (
+                                        <div
+                                            key={i}
+                                            className="card overflow-hidden"
+                                            aria-hidden
                                         >
-                                            <span
-                                                className="absolute inset-x-0 top-0 h-0.5 rounded-t-xl"
-                                                style={{ background: accent }}
-                                                aria-hidden
-                                            />
-                                            <div className="flex items-start justify-between gap-3">
-                                                <span
-                                                    className="chip"
-                                                    style={{
-                                                        color: accent,
-                                                        borderColor: `color-mix(in srgb, ${accent} 30%, transparent)`,
-                                                        background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+                                            <div className="board-sheet animate-pulse motion-reduce:animate-none" />
+                                            <div className="sheet-block">
+                                                <div className="h-3 w-24 rounded bg-white/[0.07]" />
+                                                <div className="mt-2.5 h-2 w-36 rounded bg-white/[0.04]" />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : rooms.length === 0 ? (
+                                // A genuinely empty sheet, and an invitation.
+                                <div className="card sheet-grid overflow-hidden">
+                                    <div className="grid place-items-center px-6 py-16 text-center sm:py-20">
+                                        <p className="board-note text-lg">
+                                            nothing on the drawing board yet
+                                        </p>
+                                        <p className="mt-3 max-w-sm text-sm text-ink-dim">
+                                            Name a board and it opens onto a
+                                            blank sheet. Anyone you send the
+                                            link to lands on that same sheet,
+                                            live.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                createInputRef.current?.focus()
+                                            }
+                                            className={`${btnPrimary} mt-6`}
+                                        >
+                                            Name your first board
+                                            <ArrowRight className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : noMatches ? (
+                                <div className="card sheet-grid overflow-hidden">
+                                    <div className="grid place-items-center px-6 py-14 text-center">
+                                        <p className="board-note text-lg">
+                                            no sheet matches that
+                                        </p>
+                                        <p className="mt-3 max-w-sm text-sm text-ink-dim">
+                                            {scope === "shared"
+                                                ? "Nothing has been shared with you under that name."
+                                                : scope === "owned"
+                                                  ? "You don't own a board by that name."
+                                                  : "None of your boards are called that — but you can still open one by link."}
+                                        </p>
+                                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setQuery("");
+                                                    setScope("all");
+                                                }}
+                                                className={btnGhost}
+                                            >
+                                                Clear filters
+                                            </button>
+                                            {normalizedQuery ? (
+                                                <button
+                                                    type="button"
+                                                    disabled={opening}
+                                                    onClick={() => {
+                                                        setOpenValue(query);
+                                                        void openBoardRef(
+                                                            query
+                                                        );
                                                     }}
+                                                    className={btnPrimary}
                                                 >
-                                                    {roomId}
-                                                </span>
-                                            </div>
-
-                                            <h3 className="mt-4 truncate text-base font-semibold text-ink">
-                                                {room.slug}
-                                            </h3>
-
-                                            <div className="mt-auto flex items-center justify-between pt-5">
-                                                <span className="text-xs text-ink-faint">
-                                                    {formatCreatedAt(
-                                                        room.createdAt
-                                                    )}
-                                                </span>
-                                                <span className="inline-flex items-center gap-1.5 text-xs text-ink-dim transition-colors group-hover:text-indigo">
-                                                    Open
-                                                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                                                </span>
-                                            </div>
-                                        </Link>
-                                    );
-                                })}
-                            </div>
-                        )}
+                                                    {opening
+                                                        ? "Opening…"
+                                                        : `Open “${normalizedQuery}”`}
+                                                    <ArrowRight className="h-4 w-4" />
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {visibleRooms.map((room) => (
+                                        <BoardCard
+                                            key={room.id}
+                                            room={room}
+                                            isAdmin={isOwned(room)}
+                                            onShare={setShareRoom}
+                                            onManageMembers={setMembersRoom}
+                                            onRenamed={handleRoomRenamed}
+                                            onLeft={handleRoomLeft}
+                                            onDeleted={handleRoomDeleted}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </main>
             </div>
+
+            {shareRoom ? (
+                <ShareModal
+                    room={shareRoom}
+                    onClose={() => setShareRoom(null)}
+                />
+            ) : null}
+
+            {membersRoom ? (
+                <MembersModal
+                    room={membersRoom}
+                    currentUserId={currentUserId}
+                    onClose={() => setMembersRoom(null)}
+                />
+            ) : null}
         </div>
     );
 }

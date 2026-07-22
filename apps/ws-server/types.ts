@@ -38,7 +38,12 @@ export type ServerMessage =
       }
     | { type: "error"; message: string };
 
+export type RoomRole = "ADMIN" | "EDITOR" | "VIEWER";
+
 export type RoomSession = {
     roomId: number;
     slug: string;
+    // Resolved at join time; VIEWERs may observe and move their cursor but may
+    // not mutate room state.
+    role: RoomRole;
 };

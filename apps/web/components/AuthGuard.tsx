@@ -1,18 +1,29 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useSession } from "../lib/auth-client";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
     const { data: session, isPending } = useSession();
     const router = useRouter();
+    const pathname = usePathname();
 
     useEffect(() => {
         if (!isPending && !session) {
-            router.replace("/login");
+            // Read the query string directly (rather than via
+            // `useSearchParams`) so this component doesn't force every
+            // protected page into a Suspense boundary just to build a
+            // redirect target — this effect only ever runs in the browser
+            // anyway.
+            const search =
+                typeof window !== "undefined" ? window.location.search : "";
+            const redirectTo = `${pathname}${search}`;
+            router.replace(
+                `/login?redirect=${encodeURIComponent(redirectTo)}`,
+            );
         }
-    }, [session, isPending, router]);
+    }, [session, isPending, router, pathname]);
 
     if (isPending) {
         return (

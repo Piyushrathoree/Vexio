@@ -10,10 +10,7 @@
         "@repo/db": "*",
         "better-auth": "^1.2.8",
         "dotenv": "^17.2.3",
-        "nodemailer": "^7.0.5"
-    },
-    "devDependencies": {
-        "@types/nodemailer": "^6.4.17"
+        "resend": "^4.0.0"
     },
   "peerDependencies": {
     "typescript": "^5"

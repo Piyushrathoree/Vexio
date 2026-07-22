@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DrawingElement } from "./types";
-import { getBearerToken } from "./auth-client";
+import {
+    clearBearerToken,
+    getBearerToken,
+    refreshBearerToken,
+} from "./auth-client";
 import {
     buildWhiteboardSocketUrl,
     normalizeSlug,
@@ -234,6 +238,10 @@ export const useWhiteboardStore = (slug: string) => {
         let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
         let tokenWaitTimeout: ReturnType<typeof setTimeout> | null = null;
         let tokenWaitTries = 0;
+        // One shot at minting a fresh bearer token from the session cookie,
+        // for both failure modes below (no token stored, and a token the
+        // server rejects). Guarded so a dead session can't spin.
+        let tokenRefreshTried = false;
 
         const backoffDelay = (attempt: number) => {
             const exp = Math.min(
@@ -260,8 +268,8 @@ export const useWhiteboardStore = (slug: string) => {
 
             const token = getBearerToken();
             if (!token) {
-                // Token not ready yet — poll briefly, then fall back to
-                // anonymous/local-only mode.
+                // Token not ready yet — poll briefly first, since it's written
+                // asynchronously by better-auth's response hook on sign-in.
                 setConnected(false);
                 setReconnecting(false);
                 if (tokenWaitTries < MAX_TOKEN_WAIT_TRIES) {
@@ -270,9 +278,33 @@ export const useWhiteboardStore = (slug: string) => {
                         tokenWaitTimeout = null;
                         if (!cancelled) connect();
                     }, TOKEN_WAIT_MS);
-                } else {
-                    setSynced(true);
+                    return;
                 }
+
+                // Polling didn't produce one. The session cookie may still be
+                // valid, so ask the server to re-issue a token before giving
+                // up — otherwise the board sits on "offline" saying nothing.
+                if (!tokenRefreshTried) {
+                    tokenRefreshTried = true;
+                    void refreshBearerToken().then((fresh) => {
+                        if (cancelled) return;
+                        if (fresh) {
+                            tokenWaitTries = 0;
+                            connect();
+                        } else {
+                            setSynced(true);
+                            setWsError(
+                                "You're signed out, so this board is local-only. Log in again to collaborate."
+                            );
+                        }
+                    });
+                    return;
+                }
+
+                setSynced(true);
+                setWsError(
+                    "You're signed out, so this board is local-only. Log in again to collaborate."
+                );
                 return;
             }
 
@@ -431,12 +463,35 @@ export const useWhiteboardStore = (slug: string) => {
                 setRemoteCursors([]);
                 setRemoteSelections([]);
 
-                // 4001 = unauthorized. Retrying only burns attempts against a
-                // dead session — stop and surface a clear message instead.
+                // 4001 = unauthorized. Reconnecting with the same token only
+                // burns attempts, so drop the rejected token first — leaving
+                // it in localStorage means every reload replays it and the
+                // board is stuck "offline" forever with no way to recover.
                 if (event.code === WS_CLOSE_UNAUTHORIZED) {
                     setReconnecting(false);
+                    clearBearerToken();
+
+                    // The cookie session often outlives the bearer token, so
+                    // try once to mint a fresh one before telling the user to
+                    // log in.
+                    if (!tokenRefreshTried) {
+                        tokenRefreshTried = true;
+                        void refreshBearerToken().then((fresh) => {
+                            if (cancelled) return;
+                            if (fresh) {
+                                reconnectAttempts = 0;
+                                connect();
+                            } else {
+                                setWsError(
+                                    "Your session expired. Log in again to keep collaborating."
+                                );
+                            }
+                        });
+                        return;
+                    }
+
                     setWsError(
-                        "Your session expired. Please log in again to keep collaborating."
+                        "Your session expired. Log in again to keep collaborating."
                     );
                     return;
                 }

@@ -59,6 +59,23 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
+    // Read the redirect target directly off `window.location` (rather than
+    // `useSearchParams`) so this page doesn't need a Suspense boundary just
+    // to support post-login redirects — mirrors the approach AuthGuard uses
+    // to build its own `?redirect=` param. Only same-origin relative paths
+    // are honored, guarding against open-redirect via a crafted `redirect`
+    // query value.
+    const getRedirectTarget = () => {
+        if (typeof window === "undefined") return "/rooms";
+        const redirect = new URLSearchParams(window.location.search).get(
+            "redirect"
+        );
+        if (redirect && redirect.startsWith("/") && !redirect.startsWith("//")) {
+            return redirect;
+        }
+        return "/rooms";
+    };
+
     const handleEmailLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -81,13 +98,13 @@ export default function LoginPage() {
             return;
         }
 
-        router.push("/rooms");
+        router.push(getRedirectTarget());
     };
 
     const handleSocial = async (provider: "google" | "github") => {
         await signIn.social({
             provider,
-            callbackURL: `${window.location.origin}/rooms`,
+            callbackURL: `${window.location.origin}${getRedirectTarget()}`,
         });
     };
 

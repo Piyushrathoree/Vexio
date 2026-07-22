@@ -8,17 +8,19 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  chats         Chat[]
-  rooms         Room[]    @relation("admin")
+  id             String       @id
+  name           String
+  email          String       @unique
+  emailVerified  Boolean      @default(false)
+  image          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  sessions       Session[]
+  accounts       Account[]
+  chats          Chat[]
+  rooms          Room[]       @relation("admin")
+  memberships    RoomMember[]
+  invitesCreated RoomInvite[]
 
   @@index([id])
   @@map("user")
@@ -69,20 +71,52 @@ model Verification {
 }
 
 model Room {
-  id        Int      @id @unique @default(autoincrement())
-  slug      String   @unique
-  createdAt DateTime @default(now())
+  id        Int          @id @unique @default(autoincrement())
+  slug      String       @unique
+  createdAt DateTime     @default(now())
   adminId   String
   snapshot  Json?
-  admin     User     @relation("admin", fields: [adminId], references: [id])
+  admin     User         @relation("admin", fields: [adminId], references: [id])
   chats     Chat[]
+  members   RoomMember[]
+  invites   RoomInvite[]
 }
 
 model Chat {
   id       Int    @id @unique @default(autoincrement())
   messages String
   roomId   Int
-  room     Room   @relation(fields: [roomId], references: [id])
+  room     Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
   userId   String
   user     User   @relation(fields: [userId], references: [id])
+}
+
+enum RoomRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model RoomMember {
+  id        Int      @id @unique @default(autoincrement())
+  roomId    Int
+  userId    String
+  role      RoomRole @default(EDITOR)
+  createdAt DateTime @default(now())
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model RoomInvite {
+  id        Int       @id @unique @default(autoincrement())
+  roomId    Int
+  token     String    @unique
+  role      RoomRole  @default(EDITOR)
+  createdBy String
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  room      Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  creator   User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 }

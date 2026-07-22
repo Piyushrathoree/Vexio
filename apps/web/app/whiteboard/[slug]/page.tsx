@@ -23,6 +23,7 @@ import {
     Bold,
     Italic,
     Underline,
+    Eye,
 } from "lucide-react";
 
 import { useParams, useRouter } from "next/navigation";
@@ -36,7 +37,7 @@ import React, {
 } from "react";
 
 import { AuthGuard } from "../../../components/AuthGuard";
-import { apiFetch } from "../../../lib/api";
+import { createRoom, joinRoom, type MemberRole } from "../../../lib/rooms-api";
 import { useWhiteboardStore } from "../../../lib/use-whiteboard-store";
 import { normalizeSlug } from "../../../lib/whiteboard-socket";
 
@@ -1453,7 +1454,21 @@ const initialsFor = (label: string): string => {
     return `${first}${last}`.toUpperCase();
 };
 
-function WhiteboardCanvas({ slug }: { slug: string }) {
+function WhiteboardCanvas({
+    slug,
+    role,
+}: {
+    slug: string;
+    role: MemberRole;
+}) {
+    // VIEWER members hold read-only access: the ws-server refuses their
+    // element writes with an `error` message, so the chrome must not offer
+    // any authoring affordance. Panning, zooming, selection and cursor
+    // presence all stay available.
+    const isViewer = role === "VIEWER";
+    const isViewerRef = useRef(isViewer);
+    isViewerRef.current = isViewer;
+
     const router = useRouter();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const textInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1490,7 +1505,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
     const selectedIdRef = useRef<string | null>(null);
     const textEditorRef = useRef<ActiveTextEditor | null>(null);
 
-    const [tool, setTool] = useState<Tool>("pen");
+    const [tool, setTool] = useState<Tool>(isViewer ? "select" : "pen");
     const [color, setColor] = useState<string>(COLOR_PALETTE[0] ?? "#f2f4f8");
     const [thickness, setThickness] = useState<number>(4);
     const [strokeStyle, setStrokeStyle] = useState<StrokeStyle>("solid");
@@ -1524,6 +1539,15 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
     useEffect(() => {
         selectedIdRef.current = selectedId;
     }, [selectedId]);
+
+    // Backstop for the read-only palette: if a viewer's role arrives after an
+    // authoring tool was already picked, drop back to the pointer.
+    useEffect(() => {
+        if (isViewer && tool !== "select" && tool !== "hand") {
+            setTool("select");
+            setFillDropperActive(false);
+        }
+    }, [isViewer, tool]);
 
     // Broadcast our current selection to the room (single id -> one-item array,
     // [] when cleared). The hook throttles and no-ops while disconnected.
@@ -1636,6 +1660,19 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                 (e.target instanceof HTMLDivElement &&
                     e.target.isContentEditable)
             ) {
+                return;
+            }
+
+            // Read-only members: the shortcut dispatcher answers only to the
+            // two tools their palette still offers, so a keystroke can't
+            // select a tool whose button is disabled.
+            if (isViewerRef.current) {
+                const key = e.key.toLowerCase();
+                if (key === "v" || key === "1") {
+                    setTool("select");
+                } else if (key === "h") {
+                    setTool("hand");
+                }
                 return;
             }
 
@@ -2115,7 +2152,7 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                       ) ?? null)
                     : null;
 
-                if (selectedElement) {
+                if (selectedElement && !isViewerRef.current) {
                     const resizeHandle = getResizeHandleAtPoint(
                         world,
                         selectedElement
@@ -2150,13 +2187,18 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                         setTextDecoration(target.textDecoration || "none");
                     }
 
-                    pointerStateRef.current = {
-                        mode: "moving",
-                        pointerId: event.pointerId,
-                        lastWorld: world,
-                        lastScreen: screen,
-                        elementId: target.id,
-                    };
+                    // Viewers may select an element (and have that selection
+                    // broadcast to peers) but never drag it — the WS server
+                    // refuses the resulting write.
+                    pointerStateRef.current = isViewerRef.current
+                        ? null
+                        : {
+                              mode: "moving",
+                              pointerId: event.pointerId,
+                              lastWorld: world,
+                              lastScreen: screen,
+                              elementId: target.id,
+                          };
                 } else {
                     selectedIdRef.current = null;
                     setSelectedId(null);
@@ -2226,7 +2268,9 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
 
     const handleDoubleClick = useCallback(
         (event: React.MouseEvent<HTMLCanvasElement>) => {
-            if (fillDropperActive) {
+            // Viewers may not edit text: the WS server refuses the write, so
+            // don't open an editor that can only end in an error banner.
+            if (fillDropperActive || isViewerRef.current) {
                 return;
             }
 
@@ -2548,32 +2592,52 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
             className="relative h-screen w-screen overflow-hidden font-body text-ink"
             style={{ background: canvasBg }}
         >
-            <header className="glass absolute left-0 right-0 top-0 z-30 flex items-center justify-between gap-3 border-b border-hairline px-3 py-2">
+            <header className="glass absolute left-0 right-0 top-0 z-30 flex items-center justify-between gap-2 border-b border-hairline px-2.5 py-2 sm:px-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <button
                         type="button"
                         onClick={leaveRoom}
-                        className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
+                        className="focus-ring flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-dim transition-colors hover:bg-white/[0.06] hover:text-ink"
                     >
-                        <ArrowLeft size={16} />
-                        Rooms
+                        <ArrowLeft size={16} aria-hidden />
+                        <span className="hidden sm:inline">Boards</span>
+                        <span className="sr-only sm:hidden">Boards</span>
                     </button>
-                    <span className="text-ink-faint">|</span>
-                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[var(--color-indigo)] text-[13px] font-bold text-[#0a0c12]">
+
+                    <span
+                        className="h-5 w-px shrink-0 bg-[var(--color-hairline)]"
+                        aria-hidden
+                    />
+
+                    <span
+                        className="hidden h-6 w-6 shrink-0 place-items-center rounded-md bg-[var(--color-indigo)] text-[13px] font-bold text-[#0a0c12] sm:grid"
+                        aria-hidden
+                    >
                         V
                     </span>
-                    <span className="coord truncate">
-                        {slug || "room"}
+
+                    <span className="coord truncate" title={slug || "board"}>
+                        {`// ${slug || "board"}`}
                     </span>
+
+                    {isViewer ? (
+                        <span
+                            className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-amber)]/35 bg-[var(--color-amber)]/10 px-2.5 py-1 font-mono text-[11px] text-[var(--color-amber)]"
+                            title="You have read-only access. Ask a board admin for editor access to draw."
+                        >
+                            <Eye size={12} aria-hidden />
+                            View only
+                        </span>
+                    ) : null}
                 </div>
 
                 <div
-                    className="flex items-center gap-2 rounded-full border border-hairline bg-white/[0.03] px-3 py-1"
+                    className="flex shrink-0 items-center gap-2 rounded-full border border-hairline bg-white/[0.03] px-3 py-1"
                     aria-label="Presence"
                 >
                     <span className="relative flex h-2 w-2">
                         {connected && (
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-mint)] opacity-70" />
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-mint)] opacity-70 motion-reduce:animate-none" />
                         )}
                         <span
                             className={`relative inline-flex h-2 w-2 rounded-full ${
@@ -2612,7 +2676,11 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
                         </span>
                     )}
 
-                    <span className="font-mono text-[11px] text-ink-dim">
+                    <span
+                        className="font-mono text-[11px] text-ink-dim"
+                        role="status"
+                        aria-live="polite"
+                    >
                         {reconnecting
                             ? "Reconnecting…"
                             : connected
@@ -2625,77 +2693,102 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
             </header>
             {wsError && (
                 <div
-                    className="absolute left-1/2 top-14 z-30 flex max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-xs text-red-200"
+                    className="glass absolute left-1/2 top-14 z-30 flex w-[calc(100vw-1.5rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--color-coral)]/35 px-3 py-2 text-xs text-[var(--color-coral)]"
                     role="alert"
                 >
-                    <span>{wsError}</span>
+                    <span className="min-w-0 flex-1 text-left">{wsError}</span>
                     <button
                         type="button"
                         onClick={reconnect}
-                        className="shrink-0 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 font-medium text-red-100 transition-colors hover:bg-red-500/20"
+                        className="focus-ring shrink-0 cursor-pointer rounded-lg border border-[var(--color-coral)]/40 bg-[var(--color-coral)]/10 px-2.5 py-1 font-medium text-[var(--color-coral)] transition-colors hover:bg-[var(--color-coral)]/20"
                     >
                         Reconnect
                     </button>
                 </div>
             )}
             <section
-                className="glass absolute left-1/2 bottom-5 z-20 -translate-x-1/2 flex items-center gap-0.5 rounded-2xl px-1.5 py-1.5"
+                className="glass absolute bottom-5 left-1/2 z-20 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-2xl px-1.5 py-1.5"
                 aria-label="Drawing tools"
             >
-                {TOOLBAR_TOOLS.map((item) => (
-                    <button
-                        key={item.id}
-                        type="button"
-                        title={item.label}
-                        className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-xl transition-colors ${
-                            tool === item.id
-                                ? "bg-[var(--color-indigo)] text-[#0a0c12]"
-                                : "text-ink-dim hover:bg-white/5 hover:text-ink"
-                        }`}
-                        onClick={() => {
-                            if (item.id !== "text") {
-                                commitTextEditor(false);
+                {TOOLBAR_TOOLS.map((item) => {
+                    // Viewers keep the two non-authoring tools (pointer + hand)
+                    // so they can still select, pan and follow collaborators.
+                    const locked = isViewer && item.group !== "pointer";
+                    return (
+                        <button
+                            key={item.id}
+                            type="button"
+                            title={
+                                locked
+                                    ? `${item.label} — view only, ask an admin for editor access`
+                                    : `${item.label} (${item.shortcut})`
                             }
-                            setTool(item.id);
-                            setFillDropperActive(false);
-                            setHoverCursorClass(null);
-                        }}
-                    >
-                        <item.icon size={18} strokeWidth={1.75} />
-                    </button>
-                ))}
+                            aria-label={item.label}
+                            aria-pressed={tool === item.id}
+                            disabled={locked}
+                            className={`focus-ring mx-px flex h-11 w-11 items-center justify-center rounded-xl p-2 transition-colors ${
+                                locked
+                                    ? "cursor-not-allowed text-ink-faint opacity-40"
+                                    : tool === item.id
+                                      ? "cursor-pointer bg-[var(--color-indigo)] text-[#0a0c12]"
+                                      : "cursor-pointer text-ink-dim hover:bg-white/5 hover:text-ink"
+                            }`}
+                            onClick={() => {
+                                if (item.id !== "text") {
+                                    commitTextEditor(false);
+                                }
+                                setTool(item.id);
+                                setFillDropperActive(false);
+                                setHoverCursorClass(null);
+                            }}
+                        >
+                            <item.icon size={18} strokeWidth={1.75} />
+                        </button>
+                    );
+                })}
 
                 <div className="mx-1 h-6 w-px bg-[var(--color-hairline)]" />
 
                 <button
                     type="button"
-                    title="Undo (Ctrl+Z)"
-                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-xl transition-colors ${
-                        canUndo
-                            ? "text-ink-dim hover:bg-white/5 hover:text-ink"
-                            : "text-ink-faint cursor-not-allowed"
+                    title={
+                        isViewer
+                            ? "Undo — view only, ask an admin for editor access"
+                            : "Undo (Ctrl+Z)"
+                    }
+                    aria-label="Undo"
+                    className={`focus-ring mx-px flex h-11 w-11 items-center justify-center rounded-xl p-2 transition-colors ${
+                        canUndo && !isViewer
+                            ? "cursor-pointer text-ink-dim hover:bg-white/5 hover:text-ink"
+                            : "cursor-not-allowed text-ink-faint opacity-40"
                     }`}
                     onClick={undo}
-                    disabled={!canUndo}
+                    disabled={!canUndo || isViewer}
                 >
                     <Undo size={18} strokeWidth={1.75} />
                 </button>
                 <button
                     type="button"
-                    title="Redo (Ctrl+Shift+Z)"
-                    className={`flex h-11 w-11 mx-px p-2 items-center justify-center rounded-xl transition-colors ${
-                        canRedo
-                            ? "text-ink-dim hover:bg-white/5 hover:text-ink"
-                            : "text-ink-faint cursor-not-allowed"
+                    title={
+                        isViewer
+                            ? "Redo — view only, ask an admin for editor access"
+                            : "Redo (Ctrl+Shift+Z)"
+                    }
+                    aria-label="Redo"
+                    className={`focus-ring mx-px flex h-11 w-11 items-center justify-center rounded-xl p-2 transition-colors ${
+                        canRedo && !isViewer
+                            ? "cursor-pointer text-ink-dim hover:bg-white/5 hover:text-ink"
+                            : "cursor-not-allowed text-ink-faint opacity-40"
                     }`}
                     onClick={redo}
-                    disabled={!canRedo}
+                    disabled={!canRedo || isViewer}
                 >
                     <Redo size={18} strokeWidth={1.75} />
                 </button>
             </section>
 
-            {((tool !== "select" && tool !== "hand") || selectedId) && (
+            {!isViewer &&
+                ((tool !== "select" && tool !== "hand") || selectedId) && (
                 <aside className="glass absolute left-3 top-16 z-20 w-52 space-y-3 rounded-2xl p-3">
                     <div>
                         <span className="coord mb-1.5 block uppercase tracking-wider">
@@ -3253,51 +3346,300 @@ function WhiteboardCanvas({ slug }: { slug: string }) {
 }
 
 
+/* ------------------------------------------------------------------ *
+ *  Board access gate — open by link
+ *
+ *  Opening a board's URL enrols the visitor via POST /room/:slug/join,
+ *  which is idempotent and never downgrades an existing ADMIN/VIEWER.
+ *  Every failure gets a real, named screen: this page must never bounce
+ *  someone back to /rooms without telling them what happened.
+ * ------------------------------------------------------------------ */
+
+const GATE_BTN_PRIMARY =
+    "btn-primary focus-ring inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold disabled:pointer-events-none disabled:opacity-50";
+
+const GATE_BTN_GHOST =
+    "btn-ghost focus-ring inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-sm disabled:pointer-events-none disabled:opacity-50";
+
+// Mirrors the server's slug rule (apps/http-server/controllers/index.ts):
+// lowercase letters, digits and hyphens, 3–64 characters.
+const SLUG_PATTERN = /^[a-z0-9-]{3,64}$/;
+
+type BoardGateState =
+    | { phase: "joining" }
+    | { phase: "ready"; role: MemberRole }
+    | { phase: "missing" }
+    | { phase: "failed"; message: string; retryable: boolean };
+
+function BoardGate({
+    eyebrow,
+    title,
+    children,
+    actions,
+}: {
+    eyebrow: string;
+    title: React.ReactNode;
+    children?: React.ReactNode;
+    actions?: React.ReactNode;
+}) {
+    return (
+        <main className="app grid place-items-center px-5 py-16">
+            <div className="app-bg" aria-hidden />
+            <section
+                className="card relative z-10 w-full max-w-lg p-6 shadow-[0_40px_120px_-40px_rgba(0,0,0,0.9)] sm:p-8"
+                style={{ background: "var(--color-surface)" }}
+            >
+                <p className="coord uppercase">{eyebrow}</p>
+                <h1 className="mt-3 font-display text-2xl font-bold leading-tight text-ink sm:text-[1.75rem]">
+                    {title}
+                </h1>
+                {children}
+                {actions ? (
+                    <div className="mt-6 flex flex-wrap items-center gap-2.5">
+                        {actions}
+                    </div>
+                ) : null}
+            </section>
+        </main>
+    );
+}
+
+const gateFailureMessage = (
+    label: string,
+    status: number,
+    message: string
+): string => {
+    if (status === 0) {
+        return "The Vexio server didn't answer. Check your connection, then try again.";
+    }
+    if (status === 401) {
+        return "Your session has ended. Sign in again to open this board.";
+    }
+    if (status >= 500) {
+        return `The server hit an error (${status}) opening “${label}”. Try again in a moment.`;
+    }
+    return message;
+};
+
 export default function WhiteboardPage() {
     const params = useParams();
     const router = useRouter();
     const rawSlug = typeof params.slug === "string" ? params.slug : "";
     const slug = normalizeSlug(rawSlug);
-    const [roomValid, setRoomValid] = useState<boolean | null>(null);
+    const label = slug || rawSlug || "this board";
+    const canCreate = SLUG_PATTERN.test(slug);
+
+    const [state, setState] = useState<BoardGateState>({ phase: "joining" });
+    const [attempt, setAttempt] = useState(0);
+    const [creating, setCreating] = useState(false);
+    const [createError, setCreateError] = useState("");
 
     useEffect(() => {
         if (!slug) {
-            router.replace("/rooms");
+            setState({
+                phase: "failed",
+                message:
+                    "That link doesn't name a board. Board names use lowercase letters, numbers and hyphens.",
+                retryable: false,
+            });
             return;
         }
 
         let cancelled = false;
+        setState({ phase: "joining" });
 
         void (async () => {
-            const res = await apiFetch(
-                `/api/v1/room/${encodeURIComponent(slug)}`
-            );
+            const result = await joinRoom(slug);
             if (cancelled) return;
-            if (!res.ok) {
-                router.replace("/rooms");
+
+            if (result.ok) {
+                setState({ phase: "ready", role: result.data.role });
                 return;
             }
-            setRoomValid(true);
+
+            if (result.status === 404) {
+                setState({ phase: "missing" });
+                return;
+            }
+
+            setState({
+                phase: "failed",
+                message: gateFailureMessage(
+                    slug,
+                    result.status,
+                    result.message
+                ),
+                retryable: true,
+            });
         })();
 
         return () => {
             cancelled = true;
         };
-    }, [slug, router]);
+    }, [slug, attempt]);
 
-    if (!slug || roomValid !== true) {
+    const handleCreate = async () => {
+        if (!slug || creating) return;
+
+        setCreating(true);
+        setCreateError("");
+
+        const created = await createRoom(slug);
+
+        // 409 means someone claimed the slug between the 404 and this click —
+        // that's still the board the visitor asked for, so fall through to the
+        // same join call rather than reporting a collision at them.
+        if (!created.ok && created.status !== 409) {
+            setCreating(false);
+            setCreateError(
+                gateFailureMessage(slug, created.status, created.message)
+            );
+            return;
+        }
+
+        const joined = await joinRoom(slug);
+        setCreating(false);
+
+        if (!joined.ok) {
+            setCreateError(
+                gateFailureMessage(slug, joined.status, joined.message)
+            );
+            return;
+        }
+
+        setState({ phase: "ready", role: joined.data.role });
+    };
+
+    if (state.phase === "ready") {
         return (
             <AuthGuard>
-                <main className="flex h-screen items-center justify-center font-body text-ink-dim">
-                    Loading room…
-                </main>
+                <WhiteboardCanvas slug={slug} role={state.role} />
+            </AuthGuard>
+        );
+    }
+
+    if (state.phase === "missing") {
+        return (
+            <AuthGuard>
+                <BoardGate
+                    eyebrow="// board not found"
+                    title={<>No board named “{label}”</>}
+                    actions={
+                        <>
+                            {canCreate ? (
+                                <button
+                                    type="button"
+                                    onClick={() => void handleCreate()}
+                                    disabled={creating}
+                                    className={GATE_BTN_PRIMARY}
+                                >
+                                    {creating ? (
+                                        <>
+                                            <span
+                                                className="h-4 w-4 animate-spin rounded-full border-2 border-black/25 border-t-black/70 motion-reduce:animate-none"
+                                                aria-hidden
+                                            />
+                                            Creating this board…
+                                        </>
+                                    ) : (
+                                        "Create this board"
+                                    )}
+                                </button>
+                            ) : null}
+                            <button
+                                type="button"
+                                onClick={() => router.push("/rooms")}
+                                className={
+                                    canCreate
+                                        ? GATE_BTN_GHOST
+                                        : GATE_BTN_PRIMARY
+                                }
+                            >
+                                Back to boards
+                            </button>
+                        </>
+                    }
+                >
+                    <p className="mt-3 text-sm leading-relaxed text-ink-dim">
+                        Nothing on Vexio uses the slug{" "}
+                        <span className="font-mono text-ink">{label}</span>.
+                        {canCreate
+                            ? " Create it here and you'll be its admin, or head back and pick an existing board."
+                            : " Board names use lowercase letters, numbers and hyphens, 3–64 characters — this one can't be created."}
+                    </p>
+                    {createError ? (
+                        <p
+                            className="mt-4 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3 py-2 text-xs text-[var(--color-coral)]"
+                            role="alert"
+                        >
+                            {createError}
+                        </p>
+                    ) : null}
+                </BoardGate>
+            </AuthGuard>
+        );
+    }
+
+    if (state.phase === "failed") {
+        return (
+            <AuthGuard>
+                <BoardGate
+                    eyebrow="// board unavailable"
+                    title={<>Couldn&rsquo;t open “{label}”</>}
+                    actions={
+                        <>
+                            {state.retryable ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setAttempt((n) => n + 1)}
+                                    className={GATE_BTN_PRIMARY}
+                                >
+                                    Try again
+                                </button>
+                            ) : null}
+                            <button
+                                type="button"
+                                onClick={() => router.push("/rooms")}
+                                className={
+                                    state.retryable
+                                        ? GATE_BTN_GHOST
+                                        : GATE_BTN_PRIMARY
+                                }
+                            >
+                                Back to boards
+                            </button>
+                        </>
+                    }
+                >
+                    <p
+                        className="mt-3 text-sm leading-relaxed text-ink-dim"
+                        role="alert"
+                    >
+                        {state.message}
+                    </p>
+                </BoardGate>
             </AuthGuard>
         );
     }
 
     return (
         <AuthGuard>
-            <WhiteboardCanvas slug={slug} />
+            <BoardGate
+                eyebrow="// opening board"
+                title={<>Opening “{label}”</>}
+            >
+                <p
+                    className="mt-3 flex items-center gap-2.5 text-sm text-ink-dim"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <span
+                        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-hairline border-t-[var(--color-indigo)] motion-reduce:animate-none"
+                        aria-hidden
+                    />
+                    Checking your access and loading the canvas.
+                </p>
+            </BoardGate>
         </AuthGuard>
     );
 }
