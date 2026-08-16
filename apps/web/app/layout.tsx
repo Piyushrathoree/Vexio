@@ -1,34 +1,13 @@
 import "@repo/ui/styles.css";
 import "./globals.css";
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Inter, JetBrains_Mono, Kalam } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 
-const inter = Inter({
+const plusJakarta = Plus_Jakarta_Sans({
     subsets: ["latin"],
-    variable: "--font-inter",
+    variable: "--font-plus-jakarta",
     display: "swap",
-});
-
-const bricolage = Bricolage_Grotesque({
-    subsets: ["latin"],
-    variable: "--font-bricolage",
-    display: "swap",
-});
-
-// Hand — sketch annotations on the canvas (unported whiteboard chrome).
-const kalam = Kalam({
-    subsets: ["latin"],
-    weight: ["400", "700"],
-    variable: "--font-kalam",
-    display: "swap",
-});
-
-// Utility — technical labels, tool chips, coordinates.
-const jetbrains = JetBrains_Mono({
-    subsets: ["latin"],
-    weight: ["400", "500", "700"],
-    variable: "--font-jetbrains",
-    display: "swap",
+    weight: ["400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -45,9 +24,11 @@ export default function RootLayout({
     return (
         <html
             lang="en"
-            className={`${inter.className} ${inter.variable} ${bricolage.variable} ${kalam.variable} ${jetbrains.variable} scroll-smooth motion-reduce:scroll-auto`}
+            className={`${plusJakarta.variable} scroll-smooth motion-reduce:scroll-auto`}
         >
-            <body>{children}</body>
+            <body className={`${plusJakarta.className} antialiased`}>
+                {children}
+            </body>
         </html>
     );
 }

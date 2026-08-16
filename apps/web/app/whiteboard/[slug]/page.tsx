@@ -24,6 +24,8 @@ import {
     Italic,
     Underline,
     Eye,
+    Sun,
+    Moon,
 } from "lucide-react";
 
 import { useParams, useRouter } from "next/navigation";
@@ -41,6 +43,7 @@ import { createRoom, joinRoom, type MemberRole } from "../../../lib/rooms-api";
 import { useWhiteboardStore } from "../../../lib/use-whiteboard-store";
 import { normalizeSlug } from "../../../lib/whiteboard-socket";
 
+import { getPlusJakartaStack } from "../../fonts";
 import type {
     Point,
     StrokePoint,
@@ -111,6 +114,7 @@ const STICKY_DEFAULT_WIDTH = 184;
 const STICKY_DEFAULT_HEIGHT = 152;
 const STICKY_FILL = "#ffc96b";
 const STICKY_TEXT_COLOR = "#0a0c12";
+const STICKY_TEXT_ON_DARK = "#f9f6ef";
 
 const DARK_CANVAS_INK = "#111827";
 const LIGHT_CANVAS_INK = "#ffffff";
@@ -137,6 +141,27 @@ const normalizeHexColor = (value: string): string | null => {
     }
 
     return `#${hex}`;
+};
+
+const stickyTextColor = (fill: string): string => {
+    const hex = normalizeHexColor(fill);
+    let r = 255;
+    let g = 201;
+    let b = 107;
+    if (hex) {
+        r = Number.parseInt(hex.slice(1, 3), 16);
+        g = Number.parseInt(hex.slice(3, 5), 16);
+        b = Number.parseInt(hex.slice(5, 7), 16);
+    } else {
+        const rgb = parseRgbColor(fill);
+        if (rgb) {
+            r = rgb.r;
+            g = rgb.g;
+            b = rgb.b;
+        }
+    }
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.55 ? STICKY_TEXT_COLOR : STICKY_TEXT_ON_DARK;
 };
 
 const parseRgbColor = (
@@ -195,7 +220,7 @@ const getThemeAwareCanvasColor = (color: string, isDark: boolean): string => {
             return LIGHT_CANVAS_INK;
         }
 
-        if (!isDark && normalizedHex === LIGHT_CANVAS_INK) {
+        if (!isDark && (normalizedHex === LIGHT_CANVAS_INK || normalizedHex === "#f2f4f8")) {
             return DARK_CANVAS_INK;
         }
 
@@ -210,7 +235,9 @@ const getThemeAwareCanvasColor = (color: string, isDark: boolean): string => {
     const isDarkInkRgb =
         (rgb.r === 17 && rgb.g === 24 && rgb.b === 39) ||
         (rgb.r === 0 && rgb.g === 0 && rgb.b === 0);
-    const isLightInkRgb = rgb.r === 255 && rgb.g === 255 && rgb.b === 255;
+    const isLightInkRgb =
+        (rgb.r === 255 && rgb.g === 255 && rgb.b === 255) ||
+        (rgb.r === 242 && rgb.g === 244 && rgb.b === 248);
 
     if (isDark && isDarkInkRgb) {
         return rgb.a === undefined
@@ -232,18 +259,7 @@ const RESIZE_HANDLE_HIT_RADIUS = 10;
 const TEXT_PADDING_X = 6;
 const TEXT_PADDING_Y = 4;
 const TEXT_FONT_RATIO = 0.82;
-const FONT_OPTIONS = [
-    {
-        label: "Comic",
-        value: `"Comic Sans MS", "Chalkboard SE", "Comic Neue", sans-serif`,
-    },
-    { label: "Mono", value: `"Menlo", "Monaco", "Courier New", monospace` },
-    {
-        label: "Sans",
-        value: `"Inter", "Helvetica Neue", "Arial", sans-serif`,
-    },
-];
-const DEFAULT_FONT_FAMILY = FONT_OPTIONS[0]?.value ?? "sans-serif";
+const DEFAULT_FONT_FAMILY = getPlusJakartaStack();
 
 const distance = (a: Point, b: Point): number => {
     const dx = a.x - b.x;
@@ -359,40 +375,98 @@ const toStrokePoint = (
     };
 };
 
+// Strong EMA so pointer jitter doesn't become a jagged polyline.
+const STROKE_SMOOTHING = 0.2;
+const STROKE_MIN_SCREEN_STEP = 2.2;
+
 const smoothStrokePoint = (
     last: StrokePoint,
-    next: StrokePoint
+    next: StrokePoint,
+    prev?: StrokePoint
 ): StrokePoint => {
-    const step = distance(last, next);
-    const blend = step < 3 ? 0.45 : 0.7;
+    const pressure = last.pressure * 0.45 + next.pressure * 0.55;
+    if (!prev) {
+        return {
+            x: last.x + (next.x - last.x) * STROKE_SMOOTHING,
+            y: last.y + (next.y - last.y) * STROKE_SMOOTHING,
+            t: next.t,
+            pressure,
+        };
+    }
     return {
-        x: last.x + (next.x - last.x) * blend,
-        y: last.y + (next.y - last.y) * blend,
+        x: prev.x * 0.2 + last.x * 0.55 + next.x * 0.25,
+        y: prev.y * 0.2 + last.y * 0.55 + next.y * 0.25,
         t: next.t,
-        pressure: last.pressure * 0.3 + next.pressure * 0.7,
+        pressure,
     };
 };
 
-const PEN_BASE_THICKNESS_BOOST = 1.22;
-const PEN_MIN_WIDTH_MULTIPLIER = 0.74;
-const PEN_MAX_WIDTH_MULTIPLIER = 1.16;
+const laplacianSmooth = (
+    points: StrokePoint[],
+    iterations = 3,
+    amount = 0.42
+): StrokePoint[] => {
+    if (points.length < 3) {
+        return points;
+    }
 
-const getSegmentWidth = (
-    previous: StrokePoint,
-    current: StrokePoint,
-    baseThickness: number
-): number => {
-    const dt = Math.max(1, current.t - previous.t);
-    const speed = distance(previous, current) / dt;
-    const speedFactor = clamp(speed * 0.9, 0, 1);
-    const pressureFactor = (previous.pressure + current.pressure) * 0.5;
-    const dynamicFactor = 0.8 + pressureFactor * 0.34 - speedFactor * 0.2;
-    const width = baseThickness * PEN_BASE_THICKNESS_BOOST * dynamicFactor;
-    return clamp(
-        width,
-        baseThickness * PEN_MIN_WIDTH_MULTIPLIER,
-        baseThickness * PEN_MAX_WIDTH_MULTIPLIER
-    );
+    let current = points;
+    for (let n = 0; n < iterations; n += 1) {
+        const next: StrokePoint[] = [current[0]!];
+        for (let i = 1; i < current.length - 1; i += 1) {
+            const prev = current[i - 1]!;
+            const p = current[i]!;
+            const nxt = current[i + 1]!;
+            next.push({
+                ...p,
+                x: p.x + amount * ((prev.x + nxt.x) / 2 - p.x),
+                y: p.y + amount * ((prev.y + nxt.y) / 2 - p.y),
+            });
+        }
+        next.push(current[current.length - 1]!);
+        current = next;
+    }
+    return current;
+};
+
+const strokePointAt = (points: StrokePoint[], index: number): StrokePoint => {
+    if (index <= 0) return points[0]!;
+    if (index >= points.length) return points[points.length - 1]!;
+    return points[index]!;
+};
+
+const drawSmoothPenPath = (
+    ctx: CanvasRenderingContext2D,
+    points: StrokePoint[]
+): void => {
+    const first = points[0];
+    if (!first) return;
+
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+
+    if (points.length === 2) {
+        const last = points[1];
+        if (last) ctx.lineTo(last.x, last.y);
+        ctx.stroke();
+        return;
+    }
+
+    for (let i = 0; i < points.length - 1; i += 1) {
+        const p0 = strokePointAt(points, i - 1);
+        const p1 = strokePointAt(points, i);
+        const p2 = strokePointAt(points, i + 1);
+        const p3 = strokePointAt(points, i + 2);
+        ctx.bezierCurveTo(
+            p1.x + (p2.x - p0.x) / 6,
+            p1.y + (p2.y - p0.y) / 6,
+            p2.x - (p3.x - p1.x) / 6,
+            p2.y - (p3.y - p1.y) / 6,
+            p2.x,
+            p2.y
+        );
+    }
+    ctx.stroke();
 };
 
 const distanceToSegment = (p: Point, a: Point, b: Point): number => {
@@ -1039,7 +1113,7 @@ const drawTextElement = (
     // Construct font string with weight and style
     const weight = el.fontWeight || "normal";
     const style = el.fontStyle || "normal";
-    ctx.font = `${style} ${weight} ${fontSize}px ${el.fontFamily}`;
+    ctx.font = `${style} ${weight} ${fontSize}px ${getPlusJakartaStack()}`;
 
     ctx.textBaseline = "top";
 
@@ -1103,8 +1177,8 @@ const drawStickyElement = (
     const lineHeight = fontSize * 1.3;
     const weight = el.fontWeight || "normal";
     const style = el.fontStyle || "normal";
-    ctx.fillStyle = getThemeAwareCanvasColor(el.color, isDark);
-    ctx.font = `${style} ${weight} ${fontSize}px ${el.fontFamily}`;
+    ctx.fillStyle = stickyTextColor(el.fill);
+    ctx.font = `${style} ${weight} ${fontSize}px ${getPlusJakartaStack()}`;
     ctx.textBaseline = "top";
 
     const lines = splitTextLines(el.text);
@@ -1249,55 +1323,21 @@ const drawElement = (
             return;
         }
 
+        ctx.lineWidth = Math.max(1, el.thickness);
+        ctx.fillStyle = strokeColor;
+
         if (el.points.length === 1) {
             const point = el.points[0];
             if (!point) return;
             ctx.beginPath();
-            ctx.fillStyle = strokeColor;
-            ctx.arc(
-                point.x,
-                point.y,
-                Math.max(1.4, el.thickness * 0.5),
-                0,
-                Math.PI * 2
-            );
+            ctx.arc(point.x, point.y, ctx.lineWidth / 2, 0, Math.PI * 2);
             ctx.fill();
             return;
         }
 
         const points = el.points;
-        let previousWidth = el.thickness * 0.95;
-        for (let i = 1; i < points.length; i += 1) {
-            const previous = points[i - 1];
-            const current = points[i];
-            const next = points[i + 1] ?? current;
-
-            if (!previous || !current || !next) {
-                continue;
-            }
-            const start = {
-                x: (previous.x + current.x) * 0.5,
-                y: (previous.y + current.y) * 0.5,
-            };
-            const end = {
-                x: (current.x + next.x) * 0.5,
-                y: (current.y + next.y) * 0.5,
-            };
-
-            const targetWidth = getSegmentWidth(
-                previous,
-                current,
-                el.thickness
-            );
-            const segmentWidth = previousWidth * 0.65 + targetWidth * 0.35;
-            previousWidth = segmentWidth;
-            ctx.lineWidth = segmentWidth;
-            ctx.beginPath();
-            ctx.moveTo(start.x, start.y);
-            ctx.quadraticCurveTo(current.x, current.y, end.x, end.y);
-            ctx.stroke();
-        }
-
+        if (!points[0]) return;
+        drawSmoothPenPath(ctx, laplacianSmooth(points));
         return;
     }
 
@@ -1377,7 +1417,8 @@ const buildStickyElement = (
     fontFamily: string,
     fontWeight = "normal",
     fontStyle = "normal",
-    textDecoration = "none"
+    textDecoration = "none",
+    fill = STICKY_FILL
 ): StickyElement => ({
     id: buildId(),
     type: "sticky",
@@ -1386,8 +1427,8 @@ const buildStickyElement = (
     x2: point.x + STICKY_DEFAULT_WIDTH,
     y2: point.y + STICKY_DEFAULT_HEIGHT,
     text: "",
-    fill: STICKY_FILL,
-    color: STICKY_TEXT_COLOR,
+    fill,
+    color: stickyTextColor(fill),
     thickness: 3,
     fontFamily,
     fontWeight,
@@ -1395,27 +1436,41 @@ const buildStickyElement = (
     textDecoration,
 });
 
+const CANVAS_THEME_KEY = "vexio-canvas-theme";
+
+type CanvasTheme = "dark" | "light";
+
+let canvasTheme: CanvasTheme = "dark";
+const canvasThemeListeners = new Set<() => void>();
+
+if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(CANVAS_THEME_KEY);
+    if (stored === "light" || stored === "dark") {
+        canvasTheme = stored;
+    }
+}
+
+const subscribeToCanvasTheme = (callback: () => void) => {
+    canvasThemeListeners.add(callback);
+    return () => {
+        canvasThemeListeners.delete(callback);
+    };
+};
+
+const getCanvasTheme = (): CanvasTheme => canvasTheme;
+const getCanvasThemeServer = (): CanvasTheme => "dark";
+
+const setCanvasTheme = (next: CanvasTheme) => {
+    canvasTheme = next;
+    try {
+        window.localStorage.setItem(CANVAS_THEME_KEY, next);
+    } catch {
+        /* ignore */
+    }
+    canvasThemeListeners.forEach((listener) => listener());
+};
+
 const minDrawableSize = 2;
-
-const subscribeToTheme = (callback: () => void) => {
-    const observer = new MutationObserver(callback);
-    observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-};
-
-const getThemeSnapshot = () => {
-    // Vexio's whiteboard chrome always renders the dark "Living Canvas"
-    // theme — there is no light-mode toggle — so the theme-aware canvas
-    // color pipeline should always treat the surface as dark.
-    return true;
-};
-
-const getThemeServerSnapshot = () => {
-    return true;
-};
 
 // Stable per-user hue derived from a hash of the userId, so every viewer paints
 // the same collaborator in the same color for both their cursor and selection.
@@ -1520,15 +1575,16 @@ function WhiteboardCanvas({
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [textEditor, setTextEditor] = useState<ActiveTextEditor | null>(null);
 
-    const isDark = useSyncExternalStore(
-        subscribeToTheme,
-        getThemeSnapshot,
-        getThemeServerSnapshot
+    const canvasTheme = useSyncExternalStore(
+        subscribeToCanvasTheme,
+        getCanvasTheme,
+        getCanvasThemeServer
     );
+    const isDark = canvasTheme === "dark";
 
     const [zoom, setZoom] = useState(100);
     const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
-    const canvasBg = isDark ? "#0a0c12" : "#ffffff";
+    const canvasBg = isDark ? "#191a1f" : "#ffffff";
 
     const applyElementPreview = useCallback((nextElement: DrawingElement) => {
         elementsRef.current = elementsRef.current.map((element) =>
@@ -1594,6 +1650,20 @@ function WhiteboardCanvas({
             ctx.save();
             const currentPan = panRef.current;
             ctx.translate(currentPan.x, currentPan.y);
+
+            const grid = 28;
+            ctx.fillStyle = isDark
+                ? "rgba(255, 236, 210, 0.07)"
+                : "rgba(26, 25, 22, 0.08)";
+            const viewW = rect.width / scale;
+            const viewH = rect.height / scale;
+            const x0 = Math.floor(-currentPan.x / grid) * grid;
+            const y0 = Math.floor(-currentPan.y / grid) * grid;
+            for (let x = x0; x < viewW - currentPan.x + grid; x += grid) {
+                for (let y = y0; y < viewH - currentPan.y + grid; y += grid) {
+                    ctx.fillRect(x, y, 1.25, 1.25);
+                }
+            }
             const editingElementId = textEditorRef.current?.elementId ?? null;
 
             const pointerMode = pointerStateRef.current?.mode;
@@ -1773,7 +1843,12 @@ function WhiteboardCanvas({
 
     useEffect(() => {
         scheduleDraw();
-    }, [tool, color, thickness, selectedId, scheduleDraw]);
+    }, [zoom, canvasBg, isDark, tool, color, thickness, selectedId, scheduleDraw]);
+
+    useEffect(() => {
+        if (!document.fonts?.ready) return;
+        void document.fonts.ready.then(() => scheduleDraw());
+    }, [scheduleDraw]);
 
     const getPoints = useCallback(
         (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1848,7 +1923,7 @@ function WhiteboardCanvas({
             setFontStyle(el.fontStyle || "normal");
             setTextDecoration(el.textDecoration || "none");
             setThickness(el.thickness);
-            setColor(el.color);
+            setColor(el.type === "sticky" ? el.fill : el.color);
             setHoverCursorClass(null);
             setFillDropperActive(false);
         },
@@ -2040,7 +2115,8 @@ function WhiteboardCanvas({
                     fontFamily,
                     fontWeight,
                     fontStyle,
-                    textDecoration
+                    textDecoration,
+                    color || STICKY_FILL
                 );
                 // Bridge the ref caches so the freshly-added note is immediately
                 // resolvable by the text-editor commit path.
@@ -2051,7 +2127,7 @@ function WhiteboardCanvas({
 
                 selectedIdRef.current = sticky.id;
                 setSelectedId(sticky.id);
-                setColor(sticky.color);
+                setColor(sticky.fill);
                 setThickness(sticky.thickness);
 
                 startTextEditor({
@@ -2178,7 +2254,7 @@ function WhiteboardCanvas({
                 if (target) {
                     selectedIdRef.current = target.id;
                     setSelectedId(target.id);
-                    setColor(target.color);
+                    setColor(target.type === "sticky" ? target.fill : target.color);
                     setThickness(target.thickness);
                     if (target.type === "text" || target.type === "sticky") {
                         setFontFamily(target.fontFamily);
@@ -2424,10 +2500,14 @@ function WhiteboardCanvas({
                 const points = draftRef.current.points;
                 const last = points[points.length - 1];
                 if (!last) return;
+                if (distance(pointer.lastScreen, screen) < STROKE_MIN_SCREEN_STEP) {
+                    return;
+                }
                 const nextRawPoint = toStrokePoint(world, event);
-                const nextPoint = smoothStrokePoint(last, nextRawPoint);
+                const prev = points[points.length - 2];
+                const nextPoint = smoothStrokePoint(last, nextRawPoint, prev);
 
-                if (distance(last, nextPoint) >= 0.4) {
+                if (distance(last, nextPoint) >= 0.8) {
                     draftRef.current = {
                         ...draftRef.current,
                         points: [...points, nextPoint],
@@ -2483,10 +2563,21 @@ function WhiteboardCanvas({
 
                 if (draft.type === "pen") {
                     if (draft.points.length > 0) {
-                        const next = [...elementsStateRef.current, draft];
+                        const { world } = getPoints(event);
+                        const last = draft.points[draft.points.length - 1];
+                        const tip = toStrokePoint(world, event);
+                        let points = draft.points;
+                        if (last && distance(last, tip) >= 0.8) {
+                            points = [...points, tip];
+                        }
+                        const finalized = {
+                            ...draft,
+                            points,
+                        };
+                        const next = [...elementsStateRef.current, finalized];
                         elementsStateRef.current = next;
                         elementsRef.current = next;
-                        addElement(draft);
+                        addElement(finalized);
                     }
                 } else {
                     const width = Math.abs(draft.x2 - draft.x1);
@@ -2531,7 +2622,7 @@ function WhiteboardCanvas({
 
             scheduleDraw();
         },
-        [scheduleDraw, tool, addElement, updateElement]
+        [scheduleDraw, tool, addElement, updateElement, getPoints]
     );
 
     const clearCanvas = useCallback(() => {
@@ -2589,15 +2680,17 @@ function WhiteboardCanvas({
 
     return (
         <main
-            className="relative h-screen w-screen overflow-hidden font-body text-ink"
+            className={`relative h-screen w-screen overflow-hidden font-body text-ink ${
+                isDark ? "canvas-scope" : "canvas-scope canvas-light"
+            }`}
             style={{ background: canvasBg }}
         >
-            <header className="glass absolute left-0 right-0 top-0 z-30 flex items-center justify-between gap-2 border-b border-hairline px-2.5 py-2 sm:px-3">
-                <div className="flex min-w-0 items-center gap-2">
+            <header className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex items-center justify-between gap-2 bg-transparent px-3 py-3 sm:px-5 md:py-4">
+                <div className="pointer-events-auto flex min-w-0 items-center gap-2">
                     <button
                         type="button"
                         onClick={leaveRoom}
-                        className="focus-ring flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-dim transition-colors hover:bg-white/[0.06] hover:text-ink"
+                        className="focus-ring flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-dim transition-colors hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                     >
                         <ArrowLeft size={16} aria-hidden />
                         <span className="hidden sm:inline">Boards</span>
@@ -2632,9 +2725,26 @@ function WhiteboardCanvas({
                 </div>
 
                 <div
-                    className="flex shrink-0 items-center gap-2 rounded-full border border-hairline bg-white/[0.03] px-3 py-1"
+                    className="canvas-panel pointer-events-auto flex shrink-0 items-center gap-2 rounded-full px-3 py-1"
                     aria-label="Presence"
                 >
+                    <button
+                        type="button"
+                        className="canvas-btn flex h-7 w-7 items-center justify-center rounded-full"
+                        aria-label={isDark ? "Switch to white canvas" : "Switch to dark canvas"}
+                        onClick={() => {
+                            const next = isDark ? "light" : "dark";
+                            setCanvasTheme(next);
+                            if (next === "light" && (color === "#f2f4f8" || color === "#ffffff")) {
+                                setColor("#111827");
+                            }
+                            if (next === "dark" && (color === "#1a1916" || color === "#111827")) {
+                                setColor("#f2f4f8");
+                            }
+                        }}
+                    >
+                        {isDark ? <Sun size={14} /> : <Moon size={14} />}
+                    </button>
                     <span className="relative flex h-2 w-2">
                         {connected && (
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-mint)] opacity-70 motion-reduce:animate-none" />
@@ -2707,7 +2817,7 @@ function WhiteboardCanvas({
                 </div>
             )}
             <section
-                className="glass absolute bottom-5 left-1/2 z-20 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-2xl px-1.5 py-1.5"
+                className="canvas-panel absolute bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl px-2 py-1.5 md:bottom-auto md:top-4"
                 aria-label="Drawing tools"
             >
                 {TOOLBAR_TOOLS.map((item) => {
@@ -2726,12 +2836,12 @@ function WhiteboardCanvas({
                             aria-label={item.label}
                             aria-pressed={tool === item.id}
                             disabled={locked}
-                            className={`focus-ring mx-px flex h-11 w-11 items-center justify-center rounded-xl p-2 transition-colors ${
+                            className={`focus-ring mx-px flex h-8 w-8 items-center justify-center rounded-lg p-1.5 transition-colors ${
                                 locked
                                     ? "cursor-not-allowed text-ink-faint opacity-40"
                                     : tool === item.id
-                                      ? "cursor-pointer bg-[var(--color-indigo)] text-[#0a0c12]"
-                                      : "cursor-pointer text-ink-dim hover:bg-white/5 hover:text-ink"
+                                      ? "cursor-pointer canvas-btn-selected"
+                                      : "cursor-pointer canvas-btn"
                             }`}
                             onClick={() => {
                                 if (item.id !== "text") {
@@ -2759,7 +2869,7 @@ function WhiteboardCanvas({
                     aria-label="Undo"
                     className={`focus-ring mx-px flex h-11 w-11 items-center justify-center rounded-xl p-2 transition-colors ${
                         canUndo && !isViewer
-                            ? "cursor-pointer text-ink-dim hover:bg-white/5 hover:text-ink"
+                            ? "cursor-pointer text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                             : "cursor-not-allowed text-ink-faint opacity-40"
                     }`}
                     onClick={undo}
@@ -2777,7 +2887,7 @@ function WhiteboardCanvas({
                     aria-label="Redo"
                     className={`focus-ring mx-px flex h-11 w-11 items-center justify-center rounded-xl p-2 transition-colors ${
                         canRedo && !isViewer
-                            ? "cursor-pointer text-ink-dim hover:bg-white/5 hover:text-ink"
+                            ? "cursor-pointer text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                             : "cursor-not-allowed text-ink-faint opacity-40"
                     }`}
                     onClick={redo}
@@ -2789,50 +2899,92 @@ function WhiteboardCanvas({
 
             {!isViewer &&
                 ((tool !== "select" && tool !== "hand") || selectedId) && (
-                <aside className="glass absolute left-3 top-16 z-20 w-52 space-y-3 rounded-2xl p-3">
+                <aside className="glass absolute left-3 top-16 z-20 w-52 space-y-3 rounded-2xl p-3 md:top-20">
                     <div>
                         <span className="coord mb-1.5 block uppercase tracking-wider">
-                            Stroke
+                            {tool === "sticky" ||
+                            elementsRef.current.find((el) => el.id === selectedId)
+                                ?.type === "sticky"
+                                ? "Note"
+                                : "Stroke"}
                         </span>
                         <div className="grid grid-cols-4 gap-4 p-2">
-                            {COLOR_PALETTE.map((swatch) => (
+                            {COLOR_PALETTE.map((swatch) => {
+                                const painted = getThemeAwareCanvasColor(
+                                    swatch,
+                                    isDark
+                                );
+                                const active =
+                                    color === painted || color === swatch;
+                                return (
                                 <button
                                     key={swatch}
                                     type="button"
                                     className={`h-6 w-6 rounded-full border transition hover:scale-110 ${
-                                        color === swatch
+                                        active
                                             ? "border-[var(--color-indigo)] ring-2 ring-[var(--color-indigo)]/30"
                                             : "border-hairline"
                                     }`}
-                                    style={{ background: swatch }}
+                                    style={{ background: painted }}
                                     onClick={() => {
-                                        setColor(swatch);
-                                        // Update selected element if exists
+                                        setColor(painted);
                                         if (selectedId) {
                                             const el = elementsRef.current.find(
                                                 (e) => e.id === selectedId
                                             );
-                                            if (el) {
+                                            if (el?.type === "sticky") {
+                                                const ink = stickyTextColor(painted);
                                                 updateElement({
                                                     ...el,
-                                                    color: swatch,
+                                                    fill: painted,
+                                                    color: ink,
                                                 });
+                                                setTextEditor(
+                                                    (
+                                                        current: ActiveTextEditor | null
+                                                    ) =>
+                                                        current
+                                                            ? {
+                                                                  ...current,
+                                                                  fill: painted,
+                                                                  color: ink,
+                                                              }
+                                                            : current
+                                                );
+                                            } else if (el) {
+                                                updateElement({
+                                                    ...el,
+                                                    color: painted,
+                                                });
+                                                setTextEditor(
+                                                    (
+                                                        current: ActiveTextEditor | null
+                                                    ) =>
+                                                        current
+                                                            ? {
+                                                                  ...current,
+                                                                  color: painted,
+                                                              }
+                                                            : current
+                                                );
                                             }
+                                        } else {
+                                            setTextEditor(
+                                                (
+                                                    current: ActiveTextEditor | null
+                                                ) =>
+                                                    current
+                                                        ? {
+                                                              ...current,
+                                                              color: painted,
+                                                          }
+                                                        : current
+                                            );
                                         }
-                                        setTextEditor(
-                                            (
-                                                current: ActiveTextEditor | null
-                                            ) =>
-                                                current
-                                                    ? {
-                                                          ...current,
-                                                          color: swatch,
-                                                      }
-                                                    : current
-                                        );
                                     }}
                                 />
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -2845,7 +2997,7 @@ function WhiteboardCanvas({
                             className={`rounded-md border px-3 py-1 text-xs font-medium transition ${
                                 fillDropperActive
                                     ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
-                                    : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
+                                    : "border-hairline text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                             }`}
                             onClick={toggleFill}
                         >
@@ -2870,7 +3022,7 @@ function WhiteboardCanvas({
                                     className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition ${
                                         thickness === btn.value
                                             ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
-                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
+                                            : "border-hairline text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         setThickness(btn.value);
@@ -2925,7 +3077,7 @@ function WhiteboardCanvas({
                                         className={`flex-1 rounded-md border py-1.5 text-xs font-medium transition ${
                                             strokeStyle === option.id
                                                 ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
-                                                : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
+                                                : "border-hairline text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                                         }`}
                                         onClick={() => {
                                             setStrokeStyle(option.id);
@@ -2961,63 +3113,15 @@ function WhiteboardCanvas({
                             ))) && (
                         <div>
                             <span className="coord mb-1.5 block uppercase tracking-wider">
-                                Font family
+                                Type
                             </span>
-                            <div className="flex flex-col gap-1">
-                                {FONT_OPTIONS.map((font) => (
-                                    <button
-                                        key={font.label}
-                                        type="button"
-                                        className={`rounded-md px-2.5 py-1 text-left text-xs font-medium transition ${
-                                            fontFamily === font.value
-                                                ? "bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
-                                                : "text-ink-dim hover:bg-white/5 hover:text-ink"
-                                        }`}
-                                        onClick={() => {
-                                            setFontFamily(font.value);
-                                            setTextEditor(
-                                                (
-                                                    current: ActiveTextEditor | null
-                                                ) =>
-                                                    current
-                                                        ? {
-                                                              ...current,
-                                                              fontFamily:
-                                                                  font.value,
-                                                          }
-                                                        : current
-                                            );
-                                            const selId = selectedIdRef.current;
-                                            if (selId) {
-                                                const el =
-                                                    elementsRef.current.find(
-                                                        (e) => e.id === selId
-                                                    );
-                                                if (
-                                                    el &&
-                                                    (el.type === "text" ||
-                                                        el.type === "sticky")
-                                                ) {
-                                                    updateElement({
-                                                        ...el,
-                                                        fontFamily: font.value,
-                                                    });
-                                                }
-                                                scheduleDraw();
-                                            }
-                                        }}
-                                    >
-                                        {font.label}
-                                    </button>
-                                ))}
-                            </div>
                             <div className="mt-2  flex items-center gap-3">
                                 <button
                                     type="button"
                                     className={`flex py-2 flex-1 cursor-pointer  items-center justify-center rounded-md border text-xs font-medium transition ${
                                         fontWeight === "bold"
                                             ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
-                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
+                                            : "border-hairline text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         const newWeight =
@@ -3063,7 +3167,7 @@ function WhiteboardCanvas({
                                     className={`flex  flex-1 cursor-pointer py-2 items-center justify-center rounded-md border text-xs font-medium transition ${
                                         fontStyle === "italic"
                                             ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
-                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
+                                            : "border-hairline text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         const newStyle =
@@ -3109,7 +3213,7 @@ function WhiteboardCanvas({
                                     className={`flex flex-1 cursor-pointer py-2 items-center justify-center rounded-md border text-xs font-medium transition ${
                                         textDecoration === "underline"
                                             ? "border-[var(--color-indigo)] bg-[var(--color-indigo)]/15 text-[var(--color-indigo)]"
-                                            : "border-hairline text-ink-dim hover:bg-white/5 hover:text-ink"
+                                            : "border-hairline text-ink-dim hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                                     }`}
                                     onClick={() => {
                                         const newDecoration =
@@ -3160,7 +3264,7 @@ function WhiteboardCanvas({
             <div className="glass absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-xl">
                 <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-l-xl text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
+                    className="flex h-8 w-8 items-center justify-center rounded-l-xl text-ink-dim transition-colors hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                     onClick={() => setZoom((z) => Math.max(10, z - 10))}
                     aria-label="Zoom out"
                 >
@@ -3168,14 +3272,14 @@ function WhiteboardCanvas({
                 </button>
                 <button
                     type="button"
-                    className="flex h-8 min-w-[52px] items-center justify-center border-x border-hairline px-2 font-mono text-xs font-medium text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
+                    className="flex h-8 min-w-[52px] items-center justify-center border-x border-hairline px-2 font-mono text-xs font-medium text-ink-dim transition-colors hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                     onClick={() => setZoom(100)}
                 >
                     {zoom}%
                 </button>
                 <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-r-xl text-ink-dim transition-colors hover:bg-white/5 hover:text-ink"
+                    className="flex h-8 w-8 items-center justify-center rounded-r-xl text-ink-dim transition-colors hover:bg-[var(--color-ink)]/[0.06] hover:text-ink"
                     onClick={() => setZoom((z) => Math.min(500, z + 10))}
                     aria-label="Zoom in"
                 >
@@ -3185,7 +3289,7 @@ function WhiteboardCanvas({
             <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2">
                 <button
                     type="button"
-                    className="glass flex h-8 w-8 items-center justify-center rounded-xl text-[var(--color-indigo)] transition-colors hover:bg-white/5"
+                    className="glass flex h-8 w-8 items-center justify-center rounded-xl text-[var(--color-indigo)] transition-colors hover:bg-[var(--color-ink)]/[0.06]"
                     aria-label="Help"
                 >
                     <HelpCircle size={18} />
@@ -3214,15 +3318,17 @@ function WhiteboardCanvas({
                         boxShadow: textEditor.fill
                             ? "0 5px 14px -2px rgba(0, 0, 0, 0.35)"
                             : "none",
-                        color: getThemeAwareCanvasColor(
-                            textEditor.color,
-                            isDark
-                        ),
+                        color: textEditor.fill
+                            ? stickyTextColor(textEditor.fill)
+                            : getThemeAwareCanvasColor(
+                                  textEditor.color,
+                                  isDark
+                              ),
                         fontSize: `${Math.max(
                             1,
                             textEditor.thickness * 5 * (zoom / 100)
                         )}px`,
-                        fontFamily: textEditor.fontFamily,
+                        fontFamily: getPlusJakartaStack(),
                         fontWeight: textEditor.fontWeight,
                         fontStyle: textEditor.fontStyle,
                         textDecoration: textEditor.textDecoration,

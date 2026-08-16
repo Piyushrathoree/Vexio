@@ -1,6 +1,6 @@
 /**
  * Minimal, inline-styled HTML email templates branded as "Vexio".
- * Kept dependency-free (no MJML/React email) so they can be sent as-is via Resend.
+ * Kept dependency-free (no MJML/React email) so they can be sent as-is via Nodemailer.
  */
 
 const BRAND_COLOR = "#6d28d9";

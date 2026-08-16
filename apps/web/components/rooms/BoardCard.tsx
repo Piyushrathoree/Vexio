@@ -21,7 +21,7 @@ import {
     type Room,
     type RoomSummary,
 } from "../../lib/rooms-api";
-import { accentForSlug } from "./board-accent";
+import { paletteForSlug } from "./board-accent";
 import { BoardMiniature } from "./BoardMiniature";
 
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
@@ -78,7 +78,7 @@ export function BoardCard({
     const [deleting, setDeleting] = useState(false);
     const [actionError, setActionError] = useState("");
 
-    const accent = accentForSlug(room.slug);
+    const palette = paletteForSlug(room.slug);
     const busy = renameSaving || leaving || deleting;
     const href = `/whiteboard/${room.slug}`;
 
@@ -199,39 +199,70 @@ export function BoardCard({
     };
 
     const menuItem =
-        "focus-ring flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-ink-dim transition-colors hover:bg-white/[0.06] hover:text-ink";
+        "flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[#7a7770] transition-colors hover:bg-[#1a1916]/5 hover:text-[#1a1916]";
 
     return (
-        <article
-            className="board-card card group"
-            style={{ ["--accent" as string]: accent }}
-        >
-            {/* The sheet: a genuine dot-grid drafting surface carrying the board's
-                own contents. Everything else on the card stays quiet. */}
-            <div className="board-sheet">
-                {room.preview ? (
-                    <BoardMiniature preview={room.preview} />
-                ) : (
-                    <p className="board-empty-note">
-                        {room.elementCount > 0
-                            ? "nothing to show yet"
-                            : "a blank sheet"}
-                    </p>
-                )}
-
-                {/* Redundant with the title-block link below, so it's kept out of
-                    the tab order rather than making every card cost two stops. */}
+        <article className="group relative flex flex-col rounded-2xl border border-[#e8e2d4] bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1a1916]/15 hover:shadow-lg hover:shadow-[#1a1916]/8">
+            <div
+                className="relative h-36 overflow-hidden rounded-t-2xl"
+                style={{ backgroundColor: palette.bg }}
+            >
+                {/* Hit target stays fully opaque so browsers that skip
+                    opacity:0 layers still open the board. The dimmed
+                    "Open Canvas" label is paint-only. */}
                 <Link
                     href={href}
                     tabIndex={-1}
-                    aria-hidden="true"
-                    className="absolute inset-0"
+                    aria-label={`Open ${room.slug}`}
+                    className="absolute inset-0 z-10"
                 />
+                <svg
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                    viewBox="0 0 280 144"
+                    fill="none"
+                    preserveAspectRatio="xMidYMid slice"
+                    aria-hidden
+                >
+                    <line x1="0" y1="48" x2="280" y2="48" stroke={palette.lines} strokeWidth="1" />
+                    <line x1="0" y1="96" x2="280" y2="96" stroke={palette.lines} strokeWidth="1" />
+                    <line x1="70" y1="0" x2="70" y2="144" stroke={palette.lines} strokeWidth="1" />
+                    <line x1="140" y1="0" x2="140" y2="144" stroke={palette.lines} strokeWidth="1" />
+                    <line x1="210" y1="0" x2="210" y2="144" stroke={palette.lines} strokeWidth="1" />
+                    <path
+                        d="M30 90 C 50 60, 70 110, 90 80 S 120 50, 140 70 S 170 95, 200 65 S 230 40, 260 60"
+                        stroke={palette.accent}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        fill="none"
+                        opacity="0.7"
+                    />
+                    <circle cx="90" cy="80" r="12" stroke={palette.accent} strokeWidth="1.5" fill="none" opacity="0.4" />
+                    <rect x="170" y="40" width="40" height="28" rx="4" stroke={palette.accent} strokeWidth="1.5" fill="none" opacity="0.3" />
+                </svg>
+
+                {room.preview ? (
+                    <div className="pointer-events-none absolute inset-0 opacity-80">
+                        <BoardMiniature preview={room.preview} />
+                    </div>
+                ) : null}
+
+                <span
+                    className="font-display pointer-events-none absolute inset-0 flex select-none items-center justify-center text-6xl font-semibold sm:text-7xl"
+                    style={{ color: palette.accent, opacity: 0.15 }}
+                    aria-hidden
+                >
+                    {(room.slug[0] ?? "V").toUpperCase()}
+                </span>
+
+                <span className="pointer-events-none absolute inset-0 z-[11] flex items-center justify-center bg-[#1a1916]/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <span className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#1a1916] shadow-lg">
+                        <ArrowRight className="h-4 w-4" />
+                        Open Canvas
+                    </span>
+                </span>
             </div>
 
-            {/* Sits on the card, not inside the clipped sheet, so the dropdown
-                isn't cut off by the sheet's overflow. */}
-            <div ref={menuRef} className="board-menu" data-open={menuOpen}>
+            <div ref={menuRef} className="absolute right-3 top-3 z-20">
                 <button
                     type="button"
                     onClick={() => setMenuOpen((v) => !v)}
@@ -239,10 +270,10 @@ export function BoardCard({
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                     aria-label={`Actions for ${room.slug}`}
-                    className="focus-ring grid h-7 w-7 cursor-pointer place-items-center rounded-lg border border-hairline bg-surface/80 text-ink-faint backdrop-blur transition-colors hover:text-ink disabled:pointer-events-none disabled:opacity-50"
+                    className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg border border-white/10 bg-[#1a1916]/50 text-white/80 backdrop-blur transition-colors hover:text-white disabled:opacity-50"
                 >
                     {busy ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                         <MoreVertical className="h-3.5 w-3.5" />
                     )}
@@ -251,63 +282,31 @@ export function BoardCard({
                 {menuOpen ? (
                     <div
                         role="menu"
-                        aria-label={`Actions for ${room.slug}`}
-                        className="glass absolute right-0 top-[calc(100%+6px)] z-30 w-48 rounded-xl p-1.5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.8)]"
+                        className="absolute right-0 top-[calc(100%+6px)] z-30 w-48 rounded-xl border border-[#e8e2d4] bg-[#f9f6ef] p-1.5 shadow-lg"
                     >
-                        <Link
-                            href={href}
-                            role="menuitem"
-                            onClick={() => setMenuOpen(false)}
-                            className={menuItem}
-                        >
-                            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                        <Link href={href} role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
+                            <ArrowRight className="h-3.5 w-3.5" />
                             Open
                         </Link>
-                        <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                                setMenuOpen(false);
-                                onShare(room);
-                            }}
-                            className={menuItem}
-                        >
-                            <Share2 className="h-3.5 w-3.5" aria-hidden />
+                        <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onShare(room); }} className={menuItem}>
+                            <Share2 className="h-3.5 w-3.5" />
                             Share
                         </button>
                         {isAdmin ? (
                             <>
-                                <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => {
-                                        setMenuOpen(false);
-                                        onManageMembers(room);
-                                    }}
-                                    className={menuItem}
-                                >
-                                    <Users className="h-3.5 w-3.5" aria-hidden />
+                                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onManageMembers(room); }} className={menuItem}>
+                                    <Users className="h-3.5 w-3.5" />
                                     Manage members
                                 </button>
-                                <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={startRename}
-                                    className={menuItem}
-                                >
-                                    <Pencil className="h-3.5 w-3.5" aria-hidden />
+                                <button type="button" role="menuitem" onClick={startRename} className={menuItem}>
+                                    <Pencil className="h-3.5 w-3.5" />
                                     Rename
                                 </button>
                             </>
                         ) : null}
-                        <div className="my-1 h-px bg-hairline" />
-                        <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => void handleLeave()}
-                            className={menuItem}
-                        >
-                            <LogOut className="h-3.5 w-3.5" aria-hidden />
+                        <div className="my-1 h-px bg-[#e8e2d4]" />
+                        <button type="button" role="menuitem" onClick={() => void handleLeave()} className={menuItem}>
+                            <LogOut className="h-3.5 w-3.5" />
                             Leave
                         </button>
                         {isAdmin ? (
@@ -315,9 +314,9 @@ export function BoardCard({
                                 type="button"
                                 role="menuitem"
                                 onClick={() => void handleDelete()}
-                                className="focus-ring flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[var(--color-coral)] transition-colors hover:bg-[var(--color-coral)]/10"
+                                className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[#e04e1f] hover:bg-red-50"
                             >
-                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                <Trash2 className="h-3.5 w-3.5" />
                                 Delete
                             </button>
                         ) : null}
@@ -325,9 +324,7 @@ export function BoardCard({
                 ) : null}
             </div>
 
-            {/* Title block — a drawing sheet carries its identity and its
-                measurements in a strip along the foot. */}
-            <div className="sheet-block">
+            <div className="flex flex-1 flex-col gap-3 px-4 py-3.5">
                 {renaming ? (
                     <form onSubmit={submitRename} className="space-y-1.5">
                         <div className="flex items-center gap-1.5">
@@ -338,77 +335,31 @@ export function BoardCard({
                                 onChange={(e) => setRenameValue(e.target.value)}
                                 disabled={renameSaving}
                                 aria-label="New board slug"
-                                className="input h-8 flex-1 py-0 font-mono text-sm"
+                                className="h-8 flex-1 rounded-lg border border-[#e8e2d4] px-2 font-mono text-sm"
                             />
-                            <button
-                                type="submit"
-                                disabled={renameSaving}
-                                aria-label="Save name"
-                                className="focus-ring grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-indigo transition-colors hover:bg-indigo/10 disabled:pointer-events-none disabled:opacity-50"
-                            >
-                                {renameSaving ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                                ) : (
-                                    <Check className="h-3.5 w-3.5" />
-                                )}
+                            <button type="submit" disabled={renameSaving} aria-label="Save name" className="grid h-8 w-8 place-items-center text-[#e04e1f]">
+                                {renameSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setRenaming(false);
-                                    setRenameError("");
-                                }}
-                                disabled={renameSaving}
-                                aria-label="Cancel rename"
-                                className="focus-ring grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-faint transition-colors hover:bg-white/[0.06] hover:text-ink disabled:pointer-events-none disabled:opacity-50"
-                            >
+                            <button type="button" onClick={() => { setRenaming(false); setRenameError(""); }} disabled={renameSaving} aria-label="Cancel rename" className="grid h-8 w-8 place-items-center text-[#b8b4ab]">
                                 <X className="h-3.5 w-3.5" />
                             </button>
                         </div>
-                        {renameError ? (
-                            <p className="text-xs text-[var(--color-coral)]">
-                                {renameError}
-                            </p>
-                        ) : null}
+                        {renameError ? <p className="text-xs text-[#e04e1f]">{renameError}</p> : null}
                     </form>
                 ) : (
-                    <div className="flex min-w-0 items-center gap-2">
-                        <span
-                            className="board-dot"
-                            style={{ background: accent }}
-                            aria-hidden
-                        />
-                        <Link href={href} className="board-name focus-ring">
-                            {room.slug}
-                        </Link>
-                    </div>
+                    <h3 className="truncate text-sm font-semibold text-[#1a1916]">
+                        <Link href={href}>{room.slug}</Link>
+                    </h3>
                 )}
 
-                <dl className="sheet-meta">
-                    <div>
-                        <dt>ELEM</dt>
-                        <dd>{room.elementCount}</dd>
-                    </div>
-                    <div>
-                        <dt>MEMB</dt>
-                        <dd>{room.memberCount}</dd>
-                    </div>
-                    <div>
-                        {/* Rooms carry no updatedAt, so this is the sheet's
-                            creation date and is labelled as such. */}
-                        <dt>DATE</dt>
-                        <dd>{sheetDate(room.createdAt)}</dd>
-                    </div>
-                    <div className="ml-auto">
-                        <dt className="sr-only">Your role</dt>
-                        <dd>{ROLE_LABEL[room.role] ?? room.role}</dd>
-                    </div>
-                </dl>
+                <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[#f2ede2] pt-2.5 text-xs text-[#b8b4ab]">
+                    <span>{sheetDate(room.createdAt)}</span>
+                    <span>{room.memberCount} member{room.memberCount === 1 ? "" : "s"}</span>
+                    <span>{ROLE_LABEL[room.role] ?? room.role}</span>
+                </div>
 
                 {actionError ? (
-                    <p className="mt-2 text-xs text-[var(--color-coral)]">
-                        {actionError}
-                    </p>
+                    <p className="text-xs text-[#e04e1f]">{actionError}</p>
                 ) : null}
             </div>
         </article>

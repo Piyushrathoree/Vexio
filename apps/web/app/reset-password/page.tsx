@@ -4,30 +4,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { resetPassword } from "../../lib/auth-client";
-import { AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
-
-const cardClass = "artboard w-full p-8 sm:p-10";
-const labelClass = "mb-1.5 block text-sm font-medium text-ink";
-const btnPrimary =
-    "btn-primary focus-ring group inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-sm font-semibold disabled:pointer-events-none disabled:opacity-50";
-const btnGhost =
-    "btn-ghost focus-ring group inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-sm";
-const linkClass =
-    "text-indigo underline-offset-4 transition-colors hover:underline focus-ring rounded-sm";
-
-function AuthWordmark() {
-    return (
-        <Link
-            href="/"
-            className="focus-ring mb-8 flex justify-center rounded-lg transition-opacity hover:opacity-80"
-            aria-label="Vexio home"
-        >
-            <span className="font-display text-xl font-bold tracking-tight text-ink">
-                Vex<span className="text-indigo">io</span>
-            </span>
-        </Link>
-    );
-}
+import { AlertCircle } from "lucide-react";
+import {
+    AuthBrandPanel,
+    AuthFormShell,
+    authInput,
+    authLabel,
+    authSubmit,
+} from "../../components/AuthSplit";
 
 function ResetPasswordForm() {
     const router = useRouter();
@@ -37,7 +21,9 @@ function ResetPasswordForm() {
 
     const [password, setPassword] = useState("");
     const [error, setError] = useState(
-        tokenError === "INVALID_TOKEN" ? "This reset link is invalid or expired." : ""
+        tokenError === "INVALID_TOKEN"
+            ? "This reset link is invalid or expired."
+            : ""
     );
     const [loading, setLoading] = useState(false);
 
@@ -68,24 +54,20 @@ function ResetPasswordForm() {
     };
 
     return (
-        <div className={cardClass}>
-            <AuthWordmark />
-
-                    <div className="mb-6 text-center">
-                        <p className="coord mb-2">{"// new password"}</p>
-                <h1 className="font-display text-xl font-bold tracking-tight text-ink">
-                    Reset password
-                </h1>
-                <p className="mt-1.5 text-sm text-ink-dim">
-                    Choose a new password for your account.
-                </p>
-            </div>
+        <>
+            <h1 className="font-display mb-1.5 text-3xl font-semibold text-[#1a1916]">
+                Reset password.
+            </h1>
+            <p className="mb-8 text-sm text-[#7a7770]">
+                Choose a new password for your account.
+            </p>
 
             {token ? (
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
-                        <label htmlFor="password" className={labelClass}>
+                        <label htmlFor="password" className={authLabel}>
                             New password
+                            <span className="ml-0.5 text-[#e04e1f]">*</span>
                         </label>
                         <input
                             id="password"
@@ -96,79 +78,71 @@ function ResetPasswordForm() {
                             autoComplete="new-password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="input"
+                            className={authInput}
                         />
                     </div>
                     {error ? (
                         <div
                             role="alert"
-                            className="flex items-start gap-2 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3.5 py-2.5 text-sm text-[var(--color-coral)]"
+                            className="flex items-start gap-2 text-sm text-[#e04e1f]"
                         >
-                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                             <span>{error}</span>
                         </div>
                     ) : null}
-                    <button type="submit" disabled={loading} className={btnPrimary}>
-                        {loading ? (
-                            <>
-                                <span
-                                    className="h-4 w-4 shrink-0 rounded-full border-2 border-[var(--color-canvas)]/30 border-t-[var(--color-canvas)] motion-safe:animate-spin motion-reduce:animate-none"
-                                    aria-hidden
-                                />
-                                Resetting password…
-                            </>
-                        ) : (
-                            <>
-                                Reset password
-                                <ArrowRight className="h-4 w-4 transition-transform duration-150 ease-out motion-safe:group-hover:translate-x-0.5 motion-reduce:transition-none" />
-                            </>
-                        )}
+                    <button type="submit" disabled={loading} className={authSubmit}>
+                        {loading ? "Resetting…" : "Reset password"}
                     </button>
                 </form>
             ) : (
                 <div className="space-y-3">
                     <div
                         role="alert"
-                        className="flex items-start gap-2 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3.5 py-2.5 text-sm text-[var(--color-coral)]"
+                        className="flex items-start gap-2 text-sm text-[#e04e1f]"
                     >
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                         <span>{error || "Invalid reset link."}</span>
                     </div>
-                    <Link href="/forgot-password" className={btnGhost}>
+                    <Link
+                        href="/forgot-password"
+                        className={authSubmit + " block text-center"}
+                    >
                         Request a new link
-                        <ArrowRight className="h-4 w-4 transition-transform duration-150 ease-out motion-safe:group-hover:translate-x-0.5 motion-reduce:transition-none" />
                     </Link>
                 </div>
             )}
 
-            <p className="mt-6 text-center text-sm text-ink-dim">
-                <Link href="/login" className={`${linkClass} inline-flex items-center gap-1.5`}>
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    Back to log in
+            <p className="mt-6 text-center text-sm text-[#7a7770]">
+                <Link
+                    href="/login"
+                    className="font-semibold text-[#1a1916] hover:text-[#e04e1f]"
+                >
+                    Back to sign in
                 </Link>
             </p>
-        </div>
+        </>
     );
 }
 
 export default function ResetPasswordPage() {
     return (
-        <main className="app flex min-h-screen items-center justify-center px-4 py-16">
-            <div className="app-bg" aria-hidden />
-            <div className="relative z-10 w-full max-w-md">
+        <main className="flex min-h-screen w-full overflow-x-hidden overflow-y-auto">
+            <AuthBrandPanel
+                headline="A fresh start"
+                accent="on the canvas."
+                body="Set a new password and get back to sketching with your team."
+            />
+            <AuthFormShell>
                 <Suspense
                     fallback={
-                        <div className={`${cardClass} grid place-items-center py-12`}>
-                            <span
-                                className="h-6 w-6 rounded-full border-2 border-ink-faint/30 border-t-ink motion-safe:animate-spin motion-reduce:animate-none"
-                                aria-hidden
-                            />
+                        <div className="grid place-items-center py-12">
+                            <span className="h-6 w-6 rounded-full border-2 border-[#e8e2d4] border-t-[#1a1916] motion-safe:animate-spin" />
                         </div>
                     }
                 >
                     <ResetPasswordForm />
                 </Suspense>
-            </div>
+            </AuthFormShell>
         </main>
     );
 }

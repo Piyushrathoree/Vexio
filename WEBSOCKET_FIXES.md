@@ -88,6 +88,6 @@ The client↔server message shapes and the 4001 close code were cross-checked an
 Real-time works the moment you can log in. Pick one:
 
 - **Fast (local dev):** leave `requireEmailVerification: false` in `packages/auth/auth.ts` (temporarily set for testing). Sign up → sign in → real-time works immediately. *(Don't ship this to production.)*
-- **Production-correct:** put real SMTP credentials in `.env` (`SMTP_USER`, `SMTP_PASS` = Gmail App Password, plus `SMTP_HOST/PORT/SECURE/FROM` — see `.env.example`), then set `requireEmailVerification` back to `true`. Verification emails will send, users verify, and sign-in issues the token.
+- **Production-correct:** put real Gmail credentials in `.env` (`SMTP_USER`, `SMTP_PASS` = Google App Password, and optionally `SMTP_FROM` — see `.env.example`), then set `requireEmailVerification` back to `true`. Verification emails will send, users verify, and sign-in issues the token.
 
 ⚠️ **Do not flip `requireEmailVerification` back to `true` without working SMTP** — that's exactly what broke real-time for everyone in the first place.

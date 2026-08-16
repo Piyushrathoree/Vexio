@@ -58,12 +58,12 @@ const CollaborationSection = () => {
                     {/* Left: copy */}
                     <Reveal>
                         <p className="coord mb-4">{"// real-time · x:0 y:0"}</p>
-                        <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-5xl">
+                        <h2 className="font-display text-4xl font-semibold leading-tight tracking-tight text-ink sm:text-5xl">
                             Work together,
                             <br />
-                            <span className="text-[var(--color-indigo)]">
+                            <em className="text-[var(--color-accent)]">
                                 move fast.
-                            </span>
+                            </em>
                         </h2>
                         <p className="mt-6 max-w-md text-lg leading-relaxed text-ink-dim">
                             Everyone draws, edits, and thinks on the same board
@@ -117,7 +117,7 @@ const CollaborationSection = () => {
                                         style={{ borderColor: note.color }}
                                     >
                                         <span
-                                            className="font-hand text-sm"
+                                            className="text-sm font-medium"
                                             style={{ color: note.color }}
                                         >
                                             {note.label}

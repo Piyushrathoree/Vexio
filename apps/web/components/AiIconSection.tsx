@@ -93,11 +93,9 @@ const AISection = () => {
             <div className="mx-auto max-w-6xl">
                 <Reveal className="mx-auto max-w-2xl text-center">
                     <p className="coord mb-4">{"// ai · prompt → svg"}</p>
-                    <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-5xl">
+                    <h2 className="font-display text-4xl font-semibold leading-tight tracking-tight text-ink sm:text-5xl">
                         Describe it.{" "}
-                        <span className="bg-linear-to-r from-[var(--color-violet)] to-[var(--color-indigo)] bg-clip-text text-transparent">
-                            Generate it.
-                        </span>
+                        <em className="text-[var(--color-accent)]">Generate it.</em>
                     </h2>
                     <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-dim">
                         Type a plain-language prompt and get a clean, scalable

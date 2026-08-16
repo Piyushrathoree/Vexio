@@ -29,7 +29,7 @@ const iconBtn = "icon-btn focus-ring";
 // tries to adjust its size, tracking or colour. `.coord` stays reserved for
 // the `// ...` eyebrows.
 const fieldLabel =
-    "font-mono text-[0.66rem] uppercase tracking-[0.14em] text-ink-faint";
+    "text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-ink-faint";
 
 const fieldCell = "bg-[var(--color-canvas)] px-4 py-3.5 sm:px-5";
 
@@ -98,8 +98,7 @@ function ProfileContent() {
 
     if (isPending || !user) {
         return (
-            <div className="app">
-                <div className="app-bg" aria-hidden />
+            <div className="min-h-screen bg-[#f9f6ef] pt-14">
                 <main className="relative z-10 flex min-h-screen items-center justify-center px-4">
                     <div className="flex flex-col items-center gap-3">
                         <span
@@ -119,11 +118,10 @@ function ProfileContent() {
     const joinYear = formatJoinYear(user.createdAt);
 
     return (
-        <div className="app">
-            <div className="app-bg" aria-hidden />
+        <div className="min-h-screen bg-[#f9f6ef] pt-14">
+            <Navbar />
             <div className="relative z-10 mx-auto max-w-6xl">
-                <Navbar />
-                <main className="px-4 pb-24 pt-2 sm:px-6">
+                <main className="px-4 pb-24 pt-8 sm:px-6">
                     <header className="mt-8">
                         <p className="coord mb-2">{"// account"}</p>
                         <div className="flex items-center gap-4 sm:gap-5">
@@ -171,7 +169,7 @@ function ProfileContent() {
                                                 {displayName}
                                             </span>
                                         ) : (
-                                            <span className="block font-hand text-base text-ink-dim">
+                                            <span className="block text-base text-ink-dim">
                                                 not set yet — we&apos;re using
                                                 your email handle
                                             </span>

@@ -1,28 +1,32 @@
-import { Resend } from "resend";
+import nodemailer, { type Transporter } from "nodemailer";
 import { emailLayout } from "./email-templates";
 
-let resendClient: Resend | null = null;
-let warnedMissingKey = false;
+let mailTransporter: Transporter | null = null;
+let warnedMissingConfig = false;
 
-const getResendClient = (): Resend | null => {
-    const apiKey = process.env.RESEND_API_KEY;
+const getMailTransporter = (): Transporter | null => {
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
 
-    if (!apiKey) {
-        if (!warnedMissingKey) {
+    if (!user || !pass) {
+        if (!warnedMissingConfig) {
             console.warn(
-                "[email] RESEND_API_KEY is not set — emails will not be sent. " +
-                    "Configure RESEND_API_KEY and RESEND_FROM_EMAIL to enable email delivery.",
+                "[email] SMTP_USER or SMTP_PASS is not set — emails will not be sent. " +
+                    "Configure a Gmail address and Google App Password to enable email delivery."
             );
-            warnedMissingKey = true;
+            warnedMissingConfig = true;
         }
         return null;
     }
 
-    if (!resendClient) {
-        resendClient = new Resend(apiKey);
+    if (!mailTransporter) {
+        mailTransporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: { user, pass },
+        });
     }
 
-    return resendClient;
+    return mailTransporter;
 };
 
 export const sendEmail = async ({
@@ -36,15 +40,15 @@ export const sendEmail = async ({
     text?: string;
     html?: string;
 }) => {
-    const client = getResendClient();
+    const transporter = getMailTransporter();
 
-    // Gracefully no-op when Resend isn't configured so signup/reset flows
+    // Gracefully no-op when Gmail isn't configured so signup/reset flows
     // never fail just because email delivery isn't set up (e.g. local dev).
-    if (!client) {
+    if (!transporter) {
         return;
     }
 
-    const from = process.env.RESEND_FROM_EMAIL ?? "Vexio <onboarding@resend.dev>";
+    const from = process.env.SMTP_FROM ?? process.env.SMTP_USER;
 
     // Fall back to the generic branded layout when a caller only provides
     // plain text (no dedicated template was built for that email).
@@ -59,17 +63,13 @@ export const sendEmail = async ({
         });
 
     try {
-        const { error } = await client.emails.send({
+        await transporter.sendMail({
             from,
             to,
             subject,
             html: resolvedHtml,
             text,
         });
-
-        if (error) {
-            console.error("Failed to send email:", error);
-        }
     } catch (err) {
         console.error("Failed to send email:", err);
     }

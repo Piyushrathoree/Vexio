@@ -1,20 +1,15 @@
-// A board's accent colour is derived from its slug, never from its position in
-// the list. Sorting or filtering the dashboard must not repaint a board — the
-// colour is part of that board's identity, so it has to be a pure function of
-// something stable about the board itself.
-//
-// Values are the existing palette tokens from app/globals.css, inlined as hex
-// because they're also handed to SVG paint attributes and color-mix().
+export type BoardPalette = { bg: string; accent: string; lines: string };
 
-export const BOARD_ACCENTS = [
-    "#6e8cff", // indigo
-    "#b98cff", // violet
-    "#55e0ad", // mint
-    "#ff7e82", // coral
-    "#ffc96b", // amber
-] as const;
+export const BOARD_PALETTES: BoardPalette[] = [
+    { bg: "#1a1916", accent: "#e04e1f", lines: "#3d3c36" },
+    { bg: "#2d1a0e", accent: "#e8845c", lines: "#3d2616" },
+    { bg: "#0e1a2d", accent: "#5c88e8", lines: "#162236" },
+    { bg: "#0e2d1a", accent: "#5ce8a0", lines: "#163d26" },
+    { bg: "#2d0e2d", accent: "#d45ce8", lines: "#3d163d" },
+];
 
-// FNV-1a, 32-bit. Cheap, stable, and well spread for short ASCII slugs.
+export const BOARD_ACCENTS = BOARD_PALETTES.map((p) => p.accent);
+
 function hashSlug(slug: string): number {
     let h = 0x811c9dc5;
     for (let i = 0; i < slug.length; i += 1) {
@@ -24,6 +19,10 @@ function hashSlug(slug: string): number {
     return h >>> 0;
 }
 
+export function paletteForSlug(slug: string): BoardPalette {
+    return BOARD_PALETTES[hashSlug(slug) % BOARD_PALETTES.length]!;
+}
+
 export function accentForSlug(slug: string): string {
-    return BOARD_ACCENTS[hashSlug(slug) % BOARD_ACCENTS.length]!;
+    return paletteForSlug(slug).accent;
 }

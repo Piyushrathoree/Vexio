@@ -4,16 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signIn } from "../../lib/auth-client";
-import { AlertCircle, ArrowRight } from "lucide-react";
-
-const cardClass = "artboard w-full p-8 sm:p-10";
-const labelClass = "mb-1.5 block text-sm font-medium text-ink";
-const btnPrimary =
-    "btn-primary focus-ring group inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-sm font-semibold disabled:pointer-events-none disabled:opacity-50";
-const btnGhost =
-    "btn-ghost focus-ring inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-sm disabled:pointer-events-none disabled:opacity-50";
-const linkClass =
-    "text-indigo underline-offset-4 transition-colors hover:underline focus-ring rounded-sm";
+import { AlertCircle } from "lucide-react";
+import {
+    AuthBrandPanel,
+    AuthFormShell,
+    authInput,
+    authLabel,
+    authSubmit,
+} from "../../components/AuthSplit";
 
 function GoogleIcon() {
     return (
@@ -38,20 +36,6 @@ function GoogleIcon() {
     );
 }
 
-function AuthWordmark() {
-    return (
-        <Link
-            href="/"
-            className="focus-ring mb-8 flex justify-center rounded-lg transition-opacity hover:opacity-80"
-            aria-label="Vexio home"
-        >
-            <span className="font-display text-xl font-bold tracking-tight text-ink">
-                Vex<span className="text-indigo">io</span>
-            </span>
-        </Link>
-    );
-}
-
 export default function LoginPage() {
     const router = useRouter();
     const [email, setEmail] = useState("");
@@ -59,12 +43,6 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
-    // Read the redirect target directly off `window.location` (rather than
-    // `useSearchParams`) so this page doesn't need a Suspense boundary just
-    // to support post-login redirects — mirrors the approach AuthGuard uses
-    // to build its own `?redirect=` param. Only same-origin relative paths
-    // are honored, guarding against open-redirect via a crafted `redirect`
-    // query value.
     const getRedirectTarget = () => {
         if (typeof window === "undefined") return "/rooms";
         const redirect = new URLSearchParams(window.location.search).get(
@@ -109,108 +87,100 @@ export default function LoginPage() {
     };
 
     return (
-        <main className="app flex min-h-screen items-center justify-center px-4 py-16">
-            <div className="app-bg" aria-hidden />
-            <div className="relative z-10 w-full max-w-md">
-                <div className={cardClass}>
-                    <AuthWordmark />
+        <main className="flex min-h-screen w-full overflow-x-hidden overflow-y-auto">
+            <AuthBrandPanel
+                headline="Draw anything."
+                accent="Together."
+                body="Collaborate on an infinite canvas. Sketch ideas, plan projects, and create without limits, in real-time."
+            />
+            <AuthFormShell>
+                <h1 className="font-display mb-1.5 text-3xl font-semibold text-[#1a1916]">
+                    Welcome back.
+                </h1>
+                <p className="mb-8 text-sm text-[#7a7770]">
+                    Sign in to continue to Vexio
+                </p>
 
-                    <div className="mb-6 text-center">
-                        <p className="coord mb-2">{"// welcome back"}</p>
-                        <h1 className="font-display text-xl font-bold tracking-tight text-ink">
-                            Log in
-                        </h1>
-                        <p className="mt-1.5 text-sm text-ink-dim">
-                            Open your boards and keep sketching.
-                        </p>
+                <form onSubmit={handleEmailLogin} className="space-y-5">
+                    <div>
+                        <label htmlFor="email" className={authLabel}>
+                            Email
+                            <span className="ml-0.5 text-[#e04e1f]">*</span>
+                        </label>
+                        <input
+                            id="email"
+                            type="email"
+                            placeholder="you@example.com"
+                            required
+                            autoComplete="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className={authInput}
+                        />
                     </div>
-
-                    <form onSubmit={handleEmailLogin} className="space-y-4">
-                        <div>
-                            <label htmlFor="email" className={labelClass}>
-                                Email
-                            </label>
-                            <input
-                                id="email"
-                                type="email"
-                                placeholder="you@example.com"
-                                required
-                                autoComplete="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="input"
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="password" className={labelClass}>
-                                Password
-                            </label>
-                            <input
-                                id="password"
-                                type="password"
-                                placeholder="••••••••"
-                                required
-                                autoComplete="current-password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="input"
-                            />
-                        </div>
-                        <p className="text-right text-sm">
-                            <Link href="/forgot-password" className={linkClass}>
-                                Forgot password?
-                            </Link>
-                        </p>
-                        {error ? (
-                            <div
-                                role="alert"
-                                className="flex items-start gap-2 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3.5 py-2.5 text-sm text-[var(--color-coral)]"
-                            >
-                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                                <span>{error}</span>
-                            </div>
-                        ) : null}
-                        <button type="submit" disabled={loading} className={btnPrimary}>
-                            {loading ? (
-                                <>
-                                    <span
-                                        className="h-4 w-4 shrink-0 rounded-full border-2 border-[var(--color-canvas)]/30 border-t-[var(--color-canvas)] motion-safe:animate-spin motion-reduce:animate-none"
-                                        aria-hidden
-                                    />
-                                    Logging in…
-                                </>
-                            ) : (
-                                <>
-                                    Log in
-                                    <ArrowRight className="h-4 w-4 transition-transform duration-150 ease-out motion-safe:group-hover:translate-x-0.5 motion-reduce:transition-none" />
-                                </>
-                            )}
-                        </button>
-                    </form>
-
-                    <div className="my-6 flex items-center gap-3" aria-hidden>
-                        <span className="h-px flex-1 bg-hairline" />
-                        <span className="text-sm text-ink-faint">or</span>
-                        <span className="h-px flex-1 bg-hairline" />
+                    <div>
+                        <label htmlFor="password" className={authLabel}>
+                            Password
+                            <span className="ml-0.5 text-[#e04e1f]">*</span>
+                        </label>
+                        <input
+                            id="password"
+                            type="password"
+                            placeholder="Your password"
+                            required
+                            autoComplete="current-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className={authInput}
+                        />
                     </div>
-
-                    <button
-                        type="button"
-                        onClick={() => handleSocial("google")}
-                        className={btnGhost}
-                    >
-                        <GoogleIcon />
-                        Continue with Google
-                    </button>
-
-                    <p className="mt-6 text-center text-sm text-ink-dim">
-                        New to Vexio?{" "}
-                        <Link href="/signup" className={linkClass}>
-                            Create an account
+                    <p className="text-right text-sm">
+                        <Link
+                            href="/forgot-password"
+                            className="font-semibold text-[#1a1916] hover:text-[#e04e1f]"
+                        >
+                            Forgot password?
                         </Link>
                     </p>
+                    {error ? (
+                        <div
+                            role="alert"
+                            className="flex items-start gap-2 text-sm text-[#e04e1f]"
+                        >
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>{error}</span>
+                        </div>
+                    ) : null}
+                    <button type="submit" disabled={loading} className={authSubmit}>
+                        {loading ? "Signing in…" : "Sign In"}
+                    </button>
+                </form>
+
+                <div className="my-6 flex items-center gap-3" aria-hidden>
+                    <span className="h-px flex-1 bg-[#e8e2d4]" />
+                    <span className="text-xs text-[#b8b4ab]">or</span>
+                    <span className="h-px flex-1 bg-[#e8e2d4]" />
                 </div>
-            </div>
+
+                <button
+                    type="button"
+                    onClick={() => handleSocial("google")}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#e8e2d4] bg-white text-sm font-medium text-[#1a1916] transition-colors hover:border-[#1a1916]/20"
+                >
+                    <GoogleIcon />
+                    Continue with Google
+                </button>
+
+                <p className="mt-6 text-center text-sm text-[#7a7770]">
+                    Don&apos;t have an account?{" "}
+                    <Link
+                        href="/signup"
+                        className="font-semibold text-[#1a1916] hover:text-[#e04e1f]"
+                    >
+                        Create one
+                    </Link>
+                </p>
+            </AuthFormShell>
         </main>
     );
 }

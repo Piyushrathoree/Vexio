@@ -64,10 +64,10 @@ export const auth = betterAuth({
     emailAndPassword: {
         enabled: true,
         // NOTE: off for local dev so login works without email delivery configured.
-        // Now that email delivery goes through Resend (see email.ts), this can be
-        // flipped to `true` once RESEND_API_KEY / RESEND_FROM_EMAIL are confirmed
-        // working in the target environment — otherwise users can't verify their
-        // email and real-time will break.
+        // Email delivery goes through Gmail via Nodemailer (see email.ts). This
+        // can be flipped to `true` once SMTP_USER / SMTP_PASS are confirmed
+        // working in the target environment — otherwise users can't verify
+        // their email and real-time will break.
         requireEmailVerification: false,
         autoSignIn: false,
         sendResetPassword: async ({ user, url }) => {

@@ -3,41 +3,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-    ChevronDown,
-    DoorOpen,
-    LogOut,
-    Menu,
-    User,
-    X,
-} from "lucide-react";
+import { ChevronDown, LogOut, Menu, User, X } from "lucide-react";
 import { signOut, useSession } from "../lib/auth-client";
+import Logo from "./Logo";
 
 type NavLink = { label: string; href: string };
 
 const marketingLinks: NavLink[] = [
-    { label: "Collaborate", href: "#collaborate" },
-    { label: "AI icons", href: "#ai" },
-    { label: "Why Vexio", href: "#why" },
+    { label: "Features", href: "#features" },
+    { label: "The link", href: "#flow" },
 ];
 
-// `/whiteboard` used to be a second, near-duplicate boards list; it now just
-// redirects to `/rooms`, so a single entry covers both. "Boards" is the noun
-// used across the dashboard and the in-board chrome.
 const productLinks: NavLink[] = [{ label: "Boards", href: "/rooms" }];
-
-const focusRing = "focus-ring";
-const pressable =
-    "transition-transform duration-150 ease-out active:scale-[0.97] motion-reduce:transition-none";
-
-function productIcon(href: string) {
-    switch (href) {
-        case "/rooms":
-            return DoorOpen;
-        default:
-            return null;
-    }
-}
 
 function getInitials(name?: string | null, email?: string | null) {
     const source = name?.trim() || email?.trim() || "";
@@ -47,14 +24,6 @@ function getInitials(name?: string | null, email?: string | null) {
         return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
     }
     return source.slice(0, 2).toUpperCase();
-}
-
-function Wordmark() {
-    return (
-        <span className="font-display text-lg font-bold tracking-tight text-ink">
-            Vex<span className="text-indigo">io</span>
-        </span>
-    );
 }
 
 function GithubIcon({ className }: { className?: string }) {
@@ -74,14 +43,22 @@ const Navbar = () => {
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [drawerVisible, setDrawerVisible] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [scrolled, setScrolled] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const pathname = usePathname();
+    const isLanding = pathname === "/";
 
     const { data: session, isPending } = useSession();
     const user = session?.user;
     const signedIn = !isPending && !!user;
     const navLinks = signedIn ? productLinks : marketingLinks;
+
+    useEffect(() => {
+        const onScroll = () => setScrolled(window.scrollY > 60);
+        window.addEventListener("scroll", onScroll, { passive: true });
+        return () => window.removeEventListener("scroll", onScroll);
+    }, []);
 
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
@@ -115,7 +92,6 @@ const Navbar = () => {
             setDrawerVisible(false);
             return;
         }
-        setDrawerVisible(false);
         const frame = requestAnimationFrame(() => setDrawerVisible(true));
         const prev = document.body.style.overflow;
         document.body.style.overflow = "hidden";
@@ -132,74 +108,61 @@ const Navbar = () => {
         router.push("/login");
     };
 
-    const navLinkClass = (isActive: boolean) =>
-        `rounded-lg px-3 py-1.5 text-sm transition-colors ${focusRing} ${
-            isActive
-                ? "bg-indigo/15 font-medium text-ink"
-                : "text-ink-dim hover:text-ink"
-        }`;
+    const headerSurface = isLanding
+        ? scrolled
+            ? "border-b border-[#ece8df] bg-[#f9f6ef]/90 backdrop-blur-md"
+            : "border-b border-transparent bg-transparent"
+        : "border-b border-[#e8e2d4]/80 bg-[#f9f6ef]/90 backdrop-blur-md";
 
-    const drawerLinkClass = `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-ink-dim transition-colors hover:bg-white/[0.06] hover:text-ink ${focusRing}`;
+    const linkTone =
+        "text-[#7a7770] transition-colors hover:text-[#1a1916]";
 
     return (
         <>
-            <header className="glass sticky top-0 z-50 w-full border-b border-hairline">
+            <header
+                className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${headerSurface}`}
+            >
                 <nav
                     aria-label="Main"
-                    className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6"
+                    className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6"
                 >
-                    <Link
-                        href="/"
-                        className={`rounded-lg ${focusRing} ${pressable}`}
-                        aria-label="Vexio home"
-                    >
-                        <Wordmark />
-                    </Link>
+                    <Logo />
 
-                    <ul className="hidden items-center gap-1 md:flex">
-                        {navLinks.map((link) => {
-                            const isActive =
-                                link.href.startsWith("/") &&
-                                (pathname === link.href ||
-                                    pathname.startsWith(`${link.href}/`));
-                            return (
-                                <li key={link.label}>
-                                    <Link
-                                        href={link.href}
-                                        aria-current={isActive ? "page" : undefined}
-                                        className={navLinkClass(isActive)}
-                                    >
-                                        {link.label}
-                                    </Link>
-                                </li>
-                            );
-                        })}
-                    </ul>
-
-                    <div className="hidden items-center gap-2 md:flex">
-                        <a
-                            href="https://github.com/Piyushrathoree/vexio"
-                            target="_blank"
-                            rel="noreferrer"
-                            aria-label="View Vexio on GitHub"
-                            className={`icon-btn ${focusRing} ${pressable}`}
-                        >
-                            <GithubIcon className="h-4 w-4" />
-                        </a>
-
+                    <ul className="hidden items-center gap-8 md:flex">
+                        {navLinks.map((link) => (
+                            <li key={link.label}>
+                                <Link
+                                    href={link.href}
+                                    className={`text-sm font-medium ${linkTone}`}
+                                >
+                                    {link.label}
+                                </Link>
+                            </li>
+                        ))}
+                        <li>
+                            <a
+                                href="https://github.com/Piyushrathoree/vexio"
+                                target="_blank"
+                                rel="noreferrer"
+                                className={`text-sm font-medium ${linkTone}`}
+                            >
+                                Github
+                            </a>
+                        </li>
                         {isPending ? (
-                            <span
-                                aria-hidden="true"
-                                className="ml-1 h-9 w-24 animate-pulse rounded-lg bg-white/[0.06] motion-reduce:animate-none"
+                            <li
+                                aria-hidden
+                                className="h-9 w-20 animate-pulse rounded-lg bg-[#1a1916]/5"
                             />
                         ) : signedIn ? (
-                            <div ref={menuRef} className="relative ml-1">
+                            <li className="relative">
+                                <div ref={menuRef}>
                                 <button
                                     type="button"
                                     onClick={() => setMenuOpen((v) => !v)}
                                     aria-haspopup="menu"
                                     aria-expanded={menuOpen}
-                                    className={`flex items-center gap-1.5 rounded-lg py-1.5 pl-1.5 pr-2 hover:bg-white/[0.06] ${focusRing} ${pressable}`}
+                                    className="flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 hover:bg-[#1a1916]/5"
                                 >
                                     <span className="avatar h-7 w-7 text-[11px]">
                                         {user?.image ? (
@@ -214,228 +177,142 @@ const Navbar = () => {
                                         )}
                                     </span>
                                     <ChevronDown
-                                        aria-hidden="true"
-                                        className={`h-3.5 w-3.5 text-ink-dim transition-transform motion-reduce:transition-none ${
+                                        aria-hidden
+                                        className={`h-3.5 w-3.5 text-[#7a7770] transition-transform ${
                                             menuOpen ? "rotate-180" : ""
                                         }`}
                                     />
                                 </button>
-
                                 {menuOpen && (
                                     <div
                                         role="menu"
-                                        aria-label="Account"
-                                        className="glass absolute right-0 top-[calc(100%+8px)] w-56 rounded-xl p-1.5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.8)]"
+                                        className="absolute right-0 top-[calc(100%+8px)] w-56 rounded-xl border border-[#e8e2d4] bg-[#f9f6ef] p-1.5 shadow-lg"
                                     >
                                         <div className="px-2.5 py-2">
-                                            <p className="truncate text-sm font-medium text-ink">
+                                            <p className="truncate text-sm font-medium text-[#1a1916]">
                                                 {user?.name || "Signed in"}
                                             </p>
-                                            <p className="truncate text-xs text-ink-dim">
+                                            <p className="truncate text-xs text-[#7a7770]">
                                                 {user?.email}
                                             </p>
                                         </div>
-                                        <div className="my-1 h-px bg-hairline" />
+                                        <div className="my-1 h-px bg-[#e8e2d4]" />
                                         <Link
                                             href="/profile"
                                             role="menuitem"
                                             onClick={() => setMenuOpen(false)}
-                                            className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ink-dim transition-colors hover:bg-white/[0.06] hover:text-ink ${focusRing}`}
+                                            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-[#7a7770] hover:bg-[#1a1916]/5 hover:text-[#1a1916]"
                                         >
-                                            <User className="h-4 w-4" aria-hidden="true" />
+                                            <User className="h-4 w-4" />
                                             Profile
                                         </Link>
                                         <button
                                             type="button"
                                             role="menuitem"
                                             onClick={() => void handleSignOut()}
-                                            className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-ink-dim transition-colors hover:bg-white/[0.06] hover:text-ink ${focusRing} ${pressable}`}
+                                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[#7a7770] hover:bg-[#1a1916]/5 hover:text-[#1a1916]"
                                         >
-                                            <LogOut className="h-4 w-4" aria-hidden="true" />
+                                            <LogOut className="h-4 w-4" />
                                             Sign out
                                         </button>
                                     </div>
                                 )}
-                            </div>
+                                </div>
+                            </li>
                         ) : (
-                            <div className="ml-1 flex items-center gap-2">
+                            <li>
                                 <Link
                                     href="/login"
-                                    className={`btn-ghost rounded-xl px-4 py-2 text-sm ${focusRing} ${pressable}`}
+                                    className="rounded-xl bg-[#e04e1f] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#c94318]"
                                 >
-                                    Log in
+                                    Sign In
                                 </Link>
-                                <Link
-                                    href="/signup"
-                                    className={`btn-primary rounded-xl px-4 py-2 text-sm ${focusRing} ${pressable}`}
-                                >
-                                    Sign up
-                                </Link>
-                            </div>
+                            </li>
                         )}
-                    </div>
+                    </ul>
 
-                    <div className="flex items-center gap-1 md:hidden">
-                        <button
-                            type="button"
-                            aria-label={drawerOpen ? "Close menu" : "Open menu"}
-                            aria-expanded={drawerOpen}
-                            onClick={() => setDrawerOpen((v) => !v)}
-                            className={`icon-btn ${focusRing} ${pressable}`}
-                        >
-                            {drawerOpen ? (
-                                <X className="h-5 w-5" aria-hidden="true" />
-                            ) : (
-                                <Menu className="h-5 w-5" aria-hidden="true" />
-                            )}
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        aria-label={drawerOpen ? "Close menu" : "Open menu"}
+                        aria-expanded={drawerOpen}
+                        onClick={() => setDrawerOpen((v) => !v)}
+                        className="relative z-[60] flex items-center justify-center text-[#1a1916] md:hidden"
+                    >
+                        {drawerOpen ? (
+                            <X className="h-5 w-5" />
+                        ) : (
+                            <Menu className="h-5 w-5" />
+                        )}
+                    </button>
                 </nav>
             </header>
 
             {drawerOpen && (
-                <div className="fixed inset-0 z-[60] md:hidden" role="presentation">
+                <div className="fixed inset-0 z-[55] md:hidden">
                     <button
                         type="button"
                         aria-label="Close menu"
-                        className={`absolute inset-0 bg-[var(--color-canvas)]/80 backdrop-blur-sm transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                        className={`absolute inset-0 bg-[#1a1916]/30 backdrop-blur-sm transition-opacity ${
                             drawerVisible ? "opacity-100" : "opacity-0"
                         }`}
                         onClick={() => setDrawerOpen(false)}
                     />
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label="Navigation menu"
-                        className={`glass absolute right-0 top-0 flex h-full w-full max-w-sm flex-col border-l border-hairline transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                    <aside
+                        className={`absolute right-0 top-0 flex h-full w-full max-w-sm flex-col bg-[#f9f6ef] transition-transform duration-500 ${
                             drawerVisible ? "translate-x-0" : "translate-x-full"
                         }`}
                     >
-                        <div className="flex items-center justify-between border-b border-hairline px-4 py-4">
-                            <Wordmark />
-                            <button
-                                type="button"
-                                aria-label="Close menu"
-                                onClick={() => setDrawerOpen(false)}
-                                className={`icon-btn ${focusRing} ${pressable}`}
-                            >
-                                <X className="h-5 w-5" aria-hidden="true" />
-                            </button>
+                        <div className="flex items-center justify-between border-b border-[#e8e2d4] px-5 py-5">
+                            <Logo />
                         </div>
-
-                        <div className="flex-1 overflow-y-auto px-4 py-4">
-                            {signedIn && (
-                                <div className="mb-4 flex items-center gap-3 rounded-xl border border-hairline bg-white/[0.03] px-3 py-2.5">
-                                    <span className="avatar h-9 w-9 text-xs">
-                                        {user?.image ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                                src={user.image}
-                                                alt=""
-                                                className="h-full w-full rounded-full object-cover"
-                                            />
-                                        ) : (
-                                            getInitials(user?.name, user?.email)
-                                        )}
-                                    </span>
-                                    <div className="min-w-0">
-                                        <p className="truncate text-sm font-medium text-ink">
-                                            {user?.name || "Signed in"}
-                                        </p>
-                                        <p className="truncate text-xs text-ink-dim">
-                                            {user?.email}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
-                            <ul className="flex flex-col gap-1">
-                                {navLinks.map((link) => {
-                                    const Icon = productIcon(link.href);
-                                    const isActive =
-                                        link.href.startsWith("/") &&
-                                        (pathname === link.href ||
-                                            pathname.startsWith(`${link.href}/`));
-                                    return (
-                                        <li key={link.label}>
-                                            <Link
-                                                href={link.href}
-                                                onClick={() => setDrawerOpen(false)}
-                                                aria-current={isActive ? "page" : undefined}
-                                                className={`${drawerLinkClass} ${
-                                                    isActive
-                                                        ? "bg-indigo/15 font-medium text-ink"
-                                                        : ""
-                                                }`}
-                                            >
-                                                {Icon ? (
-                                                    <Icon
-                                                        className="h-4 w-4 text-ink-dim"
-                                                        aria-hidden="true"
-                                                    />
-                                                ) : null}
-                                                {link.label}
-                                            </Link>
-                                        </li>
-                                    );
-                                })}
-                                {signedIn && (
-                                    <li>
-                                        <Link
-                                            href="/profile"
-                                            onClick={() => setDrawerOpen(false)}
-                                            className={drawerLinkClass}
-                                        >
-                                            <User
-                                                className="h-4 w-4 text-ink-dim"
-                                                aria-hidden="true"
-                                            />
-                                            Profile
-                                        </Link>
-                                    </li>
-                                )}
-                            </ul>
-                        </div>
-
-                        <div className="flex flex-col gap-2 border-t border-hairline px-4 py-4">
+                        <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 pb-8 pt-6">
+                            {navLinks.map((link) => (
+                                <Link
+                                    key={link.label}
+                                    href={link.href}
+                                    onClick={() => setDrawerOpen(false)}
+                                    className="text-2xl font-medium text-[#7a7770] hover:text-[#1a1916]"
+                                >
+                                    {link.label}
+                                </Link>
+                            ))}
                             <a
                                 href="https://github.com/Piyushrathoree/vexio"
                                 target="_blank"
                                 rel="noreferrer"
-                                className={`btn-ghost inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm ${focusRing} ${pressable}`}
+                                className="flex items-center gap-2 text-2xl font-medium text-[#7a7770] hover:text-[#1a1916]"
                             >
-                                <GithubIcon className="h-4 w-4" />
-                                GitHub
+                                <GithubIcon className="h-5 w-5" />
+                                Github
                             </a>
                             {signedIn ? (
-                                <button
-                                    type="button"
-                                    onClick={() => void handleSignOut()}
-                                    className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm text-ink-dim hover:bg-white/[0.06] hover:text-ink ${focusRing} ${pressable}`}
-                                >
-                                    <LogOut className="h-4 w-4" aria-hidden="true" />
-                                    Sign out
-                                </button>
-                            ) : (
                                 <>
                                     <Link
-                                        href="/login"
+                                        href="/profile"
                                         onClick={() => setDrawerOpen(false)}
-                                        className={`btn-ghost rounded-xl px-4 py-2.5 text-center text-sm ${focusRing} ${pressable}`}
+                                        className="text-2xl font-medium text-[#7a7770] hover:text-[#1a1916]"
                                     >
-                                        Log in
+                                        Profile
                                     </Link>
-                                    <Link
-                                        href="/signup"
-                                        onClick={() => setDrawerOpen(false)}
-                                        className={`btn-primary rounded-xl px-4 py-2.5 text-center text-sm ${focusRing} ${pressable}`}
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleSignOut()}
+                                        className="text-left text-2xl font-medium text-[#7a7770] hover:text-[#1a1916]"
                                     >
-                                        Sign up
-                                    </Link>
+                                        Sign out
+                                    </button>
                                 </>
+                            ) : (
+                                <Link
+                                    href="/login"
+                                    onClick={() => setDrawerOpen(false)}
+                                    className="inline-block w-fit rounded-lg bg-[#1a1916] px-6 py-3 font-semibold text-[#f9f6ef]"
+                                >
+                                    Sign In
+                                </Link>
                             )}
-                        </div>
-                    </div>
+                        </nav>
+                    </aside>
                 </div>
             )}
         </>

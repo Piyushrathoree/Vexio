@@ -15,7 +15,7 @@ powershell.exe -Command "cd A:\Codebase\Vexio; bun run dev"
 - **bun** `1.3.4` (see root `package.json` → `packageManager`)
 - A **Postgres database** — the project is built against [Neon](https://neon.tech) serverless Postgres
 - (Optional) A **Google** and/or **GitHub** OAuth app, if you want social login
-- (Optional) A **Gmail App Password** (or other SMTP creds) for sending verification/reset emails
+- (Optional) A **Gmail App Password** for sending verification/reset emails through Nodemailer
 
 ## Environment variables
 
@@ -34,9 +34,9 @@ Copy `.env.example` to `.env` at the repo root (`loadRootEnv()` always loads the
 | `WS_PORT` | `apps/ws-server` listen port (default `8080`) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth — only registered if **both** are set |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth — only registered if **both** are set |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | nodemailer SMTP config for verification + password-reset emails |
+| `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Gmail + Google App Password configuration for Nodemailer email delivery |
 
-**Known mismatch:** the repo's `.env.example` doesn't mention it, but if your `.env` has `RESEND_API_KEY` / `RESEND_FROM_EMAIL`, know that **no code reads those** — `packages/auth/email.ts` reads `SMTP_*` exclusively. Email sending throws unless `SMTP_USER`/`SMTP_PASS` are filled in.
+Email is sent through Gmail's SMTP service using Nodemailer. `SMTP_USER` is the Gmail address and `SMTP_PASS` must be a Google App Password, not the normal account password. `SMTP_FROM` is optional and defaults to `SMTP_USER`.
 
 **Email verification is off by default** (`requireEmailVerification: false` in `packages/auth/auth.ts`) so local sign-in works without SMTP configured. Don't flip it on without working SMTP — see [07-roadmap.md](./07-roadmap.md).
 

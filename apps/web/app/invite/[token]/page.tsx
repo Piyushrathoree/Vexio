@@ -20,8 +20,8 @@ function AuthWordmark() {
             className="focus-ring mb-8 flex justify-center rounded-lg transition-opacity hover:opacity-80"
             aria-label="Vexio home"
         >
-            <span className="font-display text-xl font-bold tracking-tight text-ink">
-                Vex<span className="text-indigo">io</span>
+            <span className="text-xl font-semibold tracking-tight text-ink">
+                Vexio
             </span>
         </Link>
     );

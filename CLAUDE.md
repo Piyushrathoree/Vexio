@@ -244,7 +244,7 @@ Root `.env` (loaded by `loadRootEnv()`; see `.env.example` for the full annotate
 
 | Var | Used by |
 |---|---|
-| `DATABASE_URL`, `DIRECT_URL` | packages/db (app currently reads `DATABASE_URL`) |
+| `DATABASE_URL`, `DIRECT_URL` | packages/db (`DIRECT_URL` is preferred; `DATABASE_URL` is the runtime fallback) |
 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | packages/auth |
 | `WEB_URL` | packages/auth (`trustedOrigins`), http-server (CORS origin) |
 | `NEXT_PUBLIC_AUTH_URL` | apps/web → REST base URL |
@@ -252,12 +252,7 @@ Root `.env` (loaded by `loadRootEnv()`; see `.env.example` for the full annotate
 | `PORT` | apps/http-server |
 | `WS_PORT` | apps/ws-server |
 | `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET` | packages/auth OAuth (optional; only registered if both are set per provider) |
-| `SMTP_HOST/PORT/SECURE/USER/PASS/FROM` | packages/auth/email.ts (nodemailer) |
-
-**Known mismatch**: the actual `.env` file currently has `RESEND_API_KEY` / `RESEND_FROM_EMAIL`
-set, but no code in the repo reads those — `packages/auth/email.ts` reads `SMTP_*` exclusively.
-Email sending will throw ("SMTP_USER and SMTP_PASS are not configured") unless `SMTP_*` is filled
-in, regardless of the Resend vars being present.
+| `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | packages/auth/email.ts (Nodemailer + Gmail SMTP; `SMTP_USER`/`SMTP_PASS` required for delivery) |
 
 ## Known gaps / sharp edges
 
@@ -273,7 +268,7 @@ in, regardless of the Resend vars being present.
   "last edited" timestamp and currently can't have one; adding it needs a migration plus a
   touch on the snapshot-save path.
 - **`Chat` model + services exist but are unwired** — no route or ws-server handler uses them.
-- **`.env` email vars mismatch** — see above.
+- **Email delivery is optional locally** — configure a Gmail App Password in `SMTP_USER`/`SMTP_PASS` before enabling required email verification.
 - **`next.config.ts` sets `typescript.ignoreBuildErrors: true`** in apps/web — `next build` will
   succeed even with type errors; rely on `bun run check-types` to actually catch them.
 - **`turbo.json` declares `db:generate`/`db:push` task configs that nothing implements** — see

@@ -3,28 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { requestPasswordReset } from "../../lib/auth-client";
-import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
-
-const cardClass = "artboard w-full p-8 sm:p-10";
-const labelClass = "mb-1.5 block text-sm font-medium text-ink";
-const btnPrimary =
-    "btn-primary focus-ring group inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-sm font-semibold disabled:pointer-events-none disabled:opacity-50";
-const linkClass =
-    "text-indigo underline-offset-4 transition-colors hover:underline focus-ring rounded-sm";
-
-function AuthWordmark() {
-    return (
-        <Link
-            href="/"
-            className="focus-ring mb-8 flex justify-center rounded-lg transition-opacity hover:opacity-80"
-            aria-label="Vexio home"
-        >
-            <span className="font-display text-xl font-bold tracking-tight text-ink">
-                Vex<span className="text-indigo">io</span>
-            </span>
-        </Link>
-    );
-}
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+    AuthBrandPanel,
+    AuthFormShell,
+    authInput,
+    authLabel,
+    authSubmit,
+} from "../../components/AuthSplit";
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
@@ -54,82 +40,69 @@ export default function ForgotPasswordPage() {
     };
 
     return (
-        <main className="app flex min-h-screen items-center justify-center px-4 py-16">
-            <div className="app-bg" aria-hidden />
-            <div className="relative z-10 w-full max-w-md">
-                <div className={cardClass}>
-                    <AuthWordmark />
+        <main className="flex min-h-screen w-full overflow-x-hidden overflow-y-auto">
+            <AuthBrandPanel
+                headline="We'll get you"
+                accent="back in."
+                body="Forgot your password? Enter your email and we'll send a reset link — no extra steps."
+            />
+            <AuthFormShell>
+                <h1 className="font-display mb-1.5 text-3xl font-semibold text-[#1a1916]">
+                    Forgot password.
+                </h1>
+                <p className="mb-8 text-sm text-[#7a7770]">
+                    We&apos;ll email you a reset link.
+                </p>
 
-                    <div className="mb-6 text-center">
-                        <p className="coord mb-2">{"// reset access"}</p>
-                        <h1 className="font-display text-xl font-bold tracking-tight text-ink">
-                            Forgot password
-                        </h1>
-                        <p className="mt-1.5 text-sm text-ink-dim">
-                            We&apos;ll email you a reset link.
-                        </p>
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div>
+                        <label htmlFor="email" className={authLabel}>
+                            Email
+                            <span className="ml-0.5 text-[#e04e1f]">*</span>
+                        </label>
+                        <input
+                            id="email"
+                            type="email"
+                            placeholder="you@example.com"
+                            required
+                            autoComplete="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className={authInput}
+                        />
                     </div>
-
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div>
-                            <label htmlFor="email" className={labelClass}>
-                                Email
-                            </label>
-                            <input
-                                id="email"
-                                type="email"
-                                placeholder="you@example.com"
-                                required
-                                autoComplete="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="input"
-                            />
+                    {error ? (
+                        <div
+                            role="alert"
+                            className="flex items-start gap-2 text-sm text-[#e04e1f]"
+                        >
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>{error}</span>
                         </div>
-                        {error ? (
-                            <div
-                                role="alert"
-                                className="flex items-start gap-2 rounded-xl border border-[var(--color-coral)]/30 bg-[var(--color-coral)]/10 px-3.5 py-2.5 text-sm text-[var(--color-coral)]"
-                            >
-                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                                <span>{error}</span>
-                            </div>
-                        ) : null}
-                        {message ? (
-                            <div
-                                role="status"
-                                className="flex items-start gap-2 rounded-xl border border-[var(--color-mint)]/30 bg-[var(--color-mint)]/10 px-3.5 py-2.5 text-sm text-[var(--color-mint)]"
-                            >
-                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                                <span>{message}</span>
-                            </div>
-                        ) : null}
-                        <button type="submit" disabled={loading} className={btnPrimary}>
-                            {loading ? (
-                                <>
-                                    <span
-                                        className="h-4 w-4 shrink-0 rounded-full border-2 border-[var(--color-canvas)]/30 border-t-[var(--color-canvas)] motion-safe:animate-spin motion-reduce:animate-none"
-                                        aria-hidden
-                                    />
-                                    Sending reset link…
-                                </>
-                            ) : (
-                                <>
-                                    Send reset link
-                                    <ArrowRight className="h-4 w-4 transition-transform duration-150 ease-out motion-safe:group-hover:translate-x-0.5 motion-reduce:transition-none" />
-                                </>
-                            )}
-                        </button>
-                    </form>
+                    ) : null}
+                    {message ? (
+                        <div
+                            role="status"
+                            className="flex items-start gap-2 text-sm text-[#5c8865]"
+                        >
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>{message}</span>
+                        </div>
+                    ) : null}
+                    <button type="submit" disabled={loading} className={authSubmit}>
+                        {loading ? "Sending…" : "Send reset link"}
+                    </button>
+                </form>
 
-                    <p className="mt-6 text-center text-sm text-ink-dim">
-                        <Link href="/login" className={`${linkClass} inline-flex items-center gap-1.5`}>
-                            <ArrowLeft className="h-3.5 w-3.5" />
-                            Back to log in
-                        </Link>
-                    </p>
-                </div>
-            </div>
+                <p className="mt-6 text-center text-sm text-[#7a7770]">
+                    <Link
+                        href="/login"
+                        className="font-semibold text-[#1a1916] hover:text-[#e04e1f]"
+                    >
+                        Back to sign in
+                    </Link>
+                </p>
+            </AuthFormShell>
         </main>
     );
 }

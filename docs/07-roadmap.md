@@ -4,7 +4,7 @@ An honest checklist of what's left. Nothing here is secret — it's all visible 
 
 ## Done
 
-- [x] **Email delivery**: migrated to Resend (`packages/auth/email.ts`). `RESEND_API_KEY` / `RESEND_FROM_EMAIL` are read and used; missing key now just no-ops delivery (logs a warning) instead of silently failing against unused `SMTP_*` vars.
+- [x] **Email delivery**: implemented with Nodemailer and Gmail SMTP (`packages/auth/email.ts`). Missing `SMTP_USER` / `SMTP_PASS` gracefully disables delivery for local development.
 - [x] **Room membership + ACL model**: `RoomMember` (role `ADMIN`/`EDITOR`/`VIEWER`) and `RoomInvite` models exist. `GET /api/v1/room/:slug` now enforces membership (`403` if the caller isn't a member), and `GET /api/v1/rooms` returns rooms the user created *or* is a member of. See [04-data-model.md](./04-data-model.md).
 - [x] **Room lifecycle + invite endpoints**: rename (`PATCH /api/v1/room/:slug`), delete (`DELETE /api/v1/room/:slug`), leave (`POST /api/v1/room/:slug/leave`), member list/role-update/removal, and invite create/accept. All admin-gated where appropriate, with last-admin protections. See [05-http-api.md](./05-http-api.md).
 - [x] **Server-side route protection middleware**: `apps/http-server/middleware/middleware.ts` (`isAuthenticated`) plus per-route `requireRoomMember` / `requireRoomAdmin` checks in the controllers.
@@ -23,5 +23,5 @@ An honest checklist of what's left. Nothing here is secret — it's all visible 
 - [ ] **Type safety**: `apps/web/next.config.ts` still sets `typescript.ignoreBuildErrors: true` — `next build` succeeds even with type errors. Remove the flag and fix whatever `bun run check-types` turns up.
 - [ ] **Tests**: there are no test scripts anywhere in the repo currently; add integration tests, especially around the new room/member/invite endpoints and their ACL edge cases (last-admin protections, expired invites).
 - [ ] **Multi-instance WS scaling**: room state still lives in a single process's memory (`Map`s in `apps/ws-server/index.ts`). Design for horizontal scaling (pub/sub layer, e.g. Redis) is sketched in [docs/design/SCALING.md](./design/SCALING.md) but not implemented.
-- [ ] **Email verification**: flip `requireEmailVerification` to `true` in `packages/auth/auth.ts` once Resend delivery is confirmed working end-to-end in the target environment (currently `false` for local dev).
+- [ ] **Email verification**: flip `requireEmailVerification` to `true` in `packages/auth/auth.ts` once Gmail delivery is confirmed working end-to-end in the target environment (currently `false` for local dev).
 - [ ] **Turbo task hygiene**: `turbo.json` still declares `db:generate` / `db:push` task shapes that `packages/db` doesn't implement (its actual scripts are `generate`, `migrate`, `reset`, `db:deploy`) — dead config. Either rename the package scripts to match or fix `turbo.json`.

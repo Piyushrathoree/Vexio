@@ -229,9 +229,20 @@ function Element({ el, scale }: { el: PreviewElement; scale: number }) {
 }
 
 export function BoardMiniature({ preview }: { preview: RoomPreview | null }) {
-    if (!preview || preview.elements.length === 0) return null;
+    if (!preview || !Array.isArray(preview.elements) || preview.elements.length === 0) {
+        return null;
+    }
 
     const { bbox } = preview;
+    if (
+        !bbox ||
+        !Number.isFinite(bbox.x1) ||
+        !Number.isFinite(bbox.y1) ||
+        !Number.isFinite(bbox.x2) ||
+        !Number.isFinite(bbox.y2)
+    ) {
+        return null;
+    }
 
     // A board can legitimately be one horizontal line, in which case the bbox
     // has zero height. Floor both dimensions before they become divisors.

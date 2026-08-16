@@ -15,9 +15,9 @@ const WhySection = () => {
             <div className="mx-auto max-w-4xl text-center">
                 <Reveal>
                     <p className="coord mb-4">{"// why vexio"}</p>
-                    <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-ink sm:text-6xl">
+                    <h2 className="font-display text-4xl font-semibold leading-tight tracking-tight text-ink sm:text-6xl">
                         More than a{" "}
-                        <span className="relative inline-block">
+                        <em className="relative inline-block text-[var(--color-accent)]">
                             whiteboard.
                             <svg
                                 className="absolute -bottom-2 left-0 w-full"
@@ -29,12 +29,12 @@ const WhySection = () => {
                             >
                                 <path
                                     d="M4 7C50 3 120 3 168 6C210 8 240 9 256 5"
-                                    stroke="var(--color-indigo)"
+                                    stroke="var(--color-accent)"
                                     strokeWidth="4"
                                     strokeLinecap="round"
                                 />
                             </svg>
-                        </span>
+                        </em>
                     </h2>
                     <p className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-ink-dim">
                         Vexio removes the friction between thinking and creating.
