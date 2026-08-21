@@ -1,7 +1,18 @@
 import Link from "next/link";
 import Logo from "./Logo";
 
-const columns = [
+type FooterLink = {
+    name: string;
+    href: string;
+    external?: boolean;
+};
+
+type FooterColumn = {
+    title: string;
+    links: FooterLink[];
+};
+
+const columns: FooterColumn[] = [
     {
         title: "Product",
         links: [
