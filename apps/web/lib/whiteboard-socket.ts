@@ -57,6 +57,13 @@ export const normalizeSlug = (slug: string) => slug.trim().toLowerCase();
 const wsBaseUrl = () =>
     process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
 
+// The localhost fallback only makes sense in development. A production build
+// without NEXT_PUBLIC_WS_URL (e.g. the ws-server isn't deployed yet) should
+// treat collaboration as switched off rather than retrying against localhost.
+export const isCollaborationConfigured = () =>
+    Boolean(process.env.NEXT_PUBLIC_WS_URL) ||
+    process.env.NODE_ENV !== "production";
+
 export const buildWhiteboardSocketUrl = () => {
     const token = getBearerToken() ?? "";
     return `${wsBaseUrl()}?token=${encodeURIComponent(token)}`;

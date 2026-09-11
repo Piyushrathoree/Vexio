@@ -9,6 +9,7 @@ import {
 } from "./auth-client";
 import {
     buildWhiteboardSocketUrl,
+    isCollaborationConfigured,
     normalizeSlug,
     safeSend,
     WS_CLOSE_UNAUTHORIZED,
@@ -272,6 +273,16 @@ export const useWhiteboardStore = (slug: string) => {
 
         const connect = () => {
             if (cancelled) return;
+
+            if (!isCollaborationConfigured()) {
+                setConnected(false);
+                setReconnecting(false);
+                setSynced(true);
+                setWsError(
+                    "Real-time collaboration isn't enabled on this deployment, so this board is local-only."
+                );
+                return;
+            }
 
             const token = getBearerToken();
             if (!token) {
