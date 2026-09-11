@@ -25,7 +25,7 @@ COPY packages/tailwind-config/package.json packages/tailwind-config/
 COPY packages/typescript-config/package.json packages/typescript-config/
 COPY packages/ui/package.json packages/ui/
 COPY packages/ws-schema/package.json packages/ws-schema/
-RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked bun install --frozen-lockfile
 
 COPY . .
 
