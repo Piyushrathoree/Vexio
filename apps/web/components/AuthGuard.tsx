@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useSession } from "../lib/auth-client";
+import { clearSessionMarker, setSessionMarker } from "../lib/session-marker";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
     const { data: session, isPending } = useSession();
@@ -10,7 +11,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
 
     useEffect(() => {
+        if (session) {
+            // Covers sign-ins that never went through the fetch client
+            // (OAuth redirects land here with only the API-host cookie).
+            setSessionMarker();
+            return;
+        }
         if (!isPending && !session) {
+            clearSessionMarker();
             // Read the query string directly (rather than via
             // `useSearchParams`) so this component doesn't force every
             // protected page into a Suspense boundary just to build a

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { signIn } from "../../lib/auth-client";
+import { useEffect, useState } from "react";
+import { signIn, useSession } from "../../lib/auth-client";
+import { setSessionMarker } from "../../lib/session-marker";
 import { AlertCircle } from "lucide-react";
 import {
     AuthBrandPanel,
@@ -56,6 +57,19 @@ export default function LoginPage() {
         }
         return "/rooms";
     };
+
+    // An OAuth sign-in returns to a protected page with only the API-host
+    // session cookie; the middleware can't see that and bounces here. Once
+    // the session check confirms we're signed in, record the first-party
+    // marker and continue to the intended page.
+    const { data: session } = useSession();
+    useEffect(() => {
+        if (session) {
+            setSessionMarker();
+            router.replace(getRedirectTarget());
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session]);
 
     const handleEmailLogin = async (e: React.FormEvent) => {
         e.preventDefault();

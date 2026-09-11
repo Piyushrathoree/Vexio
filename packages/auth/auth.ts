@@ -32,20 +32,34 @@ export const auth = betterAuth({
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.BETTER_AUTH_URL,
     trustedOrigins: [webUrl],
-    // In production the web app and auth API live on different subdomains of
-    // a shared parent domain, so session cookies must be scoped to the parent
-    // domain (e.g. ".vexio.com") for Next.js middleware to see them. Gated on
-    // COOKIE_DOMAIN so local dev (web + API both on localhost) is unaffected.
-    ...(process.env.COOKIE_DOMAIN
-        ? {
-              advanced: {
+    advanced: {
+        // In production the web app and auth API live on different subdomains
+        // of a shared parent domain, so session cookies must be scoped to the
+        // parent domain (e.g. ".vexio.com") for Next.js middleware to see
+        // them. Gated on COOKIE_DOMAIN so local dev (web + API both on
+        // localhost) is unaffected.
+        ...(process.env.COOKIE_DOMAIN
+            ? {
                   crossSubDomainCookies: {
                       enabled: true,
                       domain: process.env.COOKIE_DOMAIN,
                   },
-              },
-          }
-        : {}),
+              }
+            : {}),
+        // When the web app and the API are on unrelated sites (e.g.
+        // *.vercel.app + *.onrender.com) the browser only attaches the session
+        // cookie to cross-site fetches if it is SameSite=None; Secure. The
+        // Next.js middleware can't see it either way — the web app keeps its
+        // own first-party marker cookie for that (see apps/web/lib/session-marker.ts).
+        ...(process.env.CROSS_SITE_AUTH === "true"
+            ? {
+                  defaultCookieAttributes: {
+                      sameSite: "none" as const,
+                      secure: true,
+                  },
+              }
+            : {}),
+    },
     emailVerification: {
         sendOnSignUp: true,
         autoSignInAfterVerification: true,

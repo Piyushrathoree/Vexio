@@ -1,6 +1,7 @@
 "use client";
 
 import { createAuthClient } from "better-auth/react";
+import { clearSessionMarker, setSessionMarker } from "./session-marker";
 
 const authBaseUrl =
     process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8000";
@@ -20,12 +21,14 @@ export const authClient = createAuthClient({
             const authToken = ctx.response.headers.get("set-auth-token");
             if (authToken) {
                 localStorage.setItem("bearer_token", authToken);
+                setSessionMarker();
             }
         },
         onResponse: (ctx) => {
             const authToken = ctx.response.headers.get("set-auth-token");
             if (authToken) {
                 localStorage.setItem("bearer_token", authToken);
+                setSessionMarker();
             }
         },
     },
@@ -49,6 +52,7 @@ export const signOut: typeof authClient.signOut = async (...args) => {
         return await authClient.signOut(...args);
     } finally {
         clearBearerToken();
+        clearSessionMarker();
     }
 };
 
@@ -95,6 +99,7 @@ export const refreshBearerToken = async (): Promise<string | null> => {
         if (typeof token !== "string" || !token) return null;
 
         localStorage.setItem("bearer_token", token);
+        setSessionMarker();
         return token;
     } catch {
         return null;

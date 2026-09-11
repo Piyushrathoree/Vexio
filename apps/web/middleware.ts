@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_MARKER_COOKIE } from "./lib/session-marker";
 
 /**
  * Server-side route guard.
@@ -43,6 +44,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE_NAMES = [
     "__Secure-better-auth.session_token",
     "better-auth.session_token",
+    // First-party marker set by the web app itself; the only one visible when
+    // the API lives on an unrelated site (see lib/session-marker.ts).
+    SESSION_MARKER_COOKIE,
 ];
 
 const PROTECTED_PATHS = ["/rooms", "/profile", "/whiteboard"];
