@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signUp } from "../../lib/auth-client";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import {
     AuthBrandPanel,
     AuthFormShell,
@@ -13,33 +14,60 @@ import {
 } from "../../components/AuthSplit";
 
 export default function SignupPage() {
+    const router = useRouter();
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
-    const [message, setMessage] = useState("");
+    const [error, setError] = useState<React.ReactNode>("");
     const [loading, setLoading] = useState(false);
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError("");
-        setMessage("");
 
-        const { error: signUpError } = await signUp.email({
-            name,
-            email,
-            password,
-        });
+        try {
+            const { error: signUpError } = await signUp.email({
+                name,
+                email,
+                password,
+            });
 
-        setLoading(false);
+            if (signUpError) {
+                // better-auth only reports a duplicate email when `autoSignIn`
+                // is on (see packages/auth/auth.ts); otherwise this would be a
+                // silent 200. The account may have been created via Google, in
+                // which case there's no password to sign in with.
+                if (signUpError.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL") {
+                    setError(
+                        <>
+                            An account with this email already exists.{" "}
+                            <Link
+                                href="/login"
+                                className="font-semibold underline underline-offset-2"
+                            >
+                                Sign in
+                            </Link>{" "}
+                            instead — or use &ldquo;Continue with Google&rdquo; if
+                            that&apos;s how you registered.
+                        </>
+                    );
+                    return;
+                }
+                setError(signUpError.message || "Sign up failed");
+                return;
+            }
 
-        if (signUpError) {
-            setError(signUpError.message ?? "Sign up failed");
-            return;
+            // `autoSignIn` already set the session cookie, so land on the
+            // dashboard rather than asking for a second sign-in.
+            router.push("/rooms");
+        } catch {
+            setError(
+                "Couldn't reach the server. Check that the API is running and that you're opening the app on the same host it expects."
+            );
+        } finally {
+            setLoading(false);
         }
-
-        setMessage("Account created. Sign in to get started.");
     };
 
     return (
@@ -114,15 +142,6 @@ export default function SignupPage() {
                         >
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                             <span>{error}</span>
-                        </div>
-                    ) : null}
-                    {message ? (
-                        <div
-                            role="status"
-                            className="flex items-start gap-2 text-sm text-[#5c8865]"
-                        >
-                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                            <span>{message}</span>
                         </div>
                     ) : null}
                     <button type="submit" disabled={loading} className={authSubmit}>

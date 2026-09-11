@@ -26,9 +26,14 @@ const MAX_MESSAGE_BYTES = 256 * 1024; // 256 KB per frame
 const MAX_PAYLOAD_BYTES = 512 * 1024; // 512 KB
 // Cap on persisted elements per room so a single room can't grow unbounded.
 const MAX_ELEMENTS_PER_ROOM = 10000;
-// Strict token bucket for state-mutating / control messages.
-const GENERAL_BURST = 40;
-const GENERAL_REFILL_PER_SEC = 20;
+// Strict token bucket for state-mutating / control messages. Sized against the
+// client's real send pattern: a drag sends one `element_update` per dragged
+// element per ~33ms frame (use-whiteboard-store.ts flushPendingUpdates), so a
+// 10-element multi-select drag is ~300 msg/s and a group move of a few dozen
+// elements bursts well past that. Paste/undo of a large selection lands as a
+// burst of `element_add`s too. Anything sustained above this is a flood.
+const GENERAL_BURST = 600;
+const GENERAL_REFILL_PER_SEC = 300;
 // Cheaper, higher-throughput bucket for ephemeral cursor/selection so live
 // cursors stay smooth even under rapid pointer movement.
 const EPHEMERAL_BURST = 120;
@@ -55,10 +60,10 @@ const roomMaps: RoomMaps = {
 
 const { roomState, roomIds } = roomMaps;
 
-const rawPort = process.env.WS_PORT ?? "8080";
+const rawPort = process.env.PORT ?? process.env.WS_PORT ?? "8080";
 const port = Number(rawPort);
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid WS_PORT: "${rawPort}"`);
+    throw new Error(`invalid WebSocket port: "${rawPort}"`);
 }
 
 const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD_BYTES });

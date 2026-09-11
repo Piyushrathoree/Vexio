@@ -41,6 +41,7 @@ const storageKey = (slug: string) => `whiteboard:${slug}`;
 const UPDATE_THROTTLE_MS = 33; // ~30fps for element_update while dragging
 const CURSOR_THROTTLE_MS = 33; // ~30fps for cursor presence
 const SELECTION_THROTTLE_MS = 60; // ~16fps for selection presence
+const SERVER_ERROR_TOAST_MS = 5000; // how long a server-relayed error toast stays up
 
 // Reconnect / backoff tuning.
 const MAX_RECONNECT_ATTEMPTS = 8;
@@ -150,6 +151,12 @@ export const useWhiteboardStore = (slug: string) => {
 
     // Throttled ephemeral presence senders.
     const cursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Server-relayed `error` messages (rate limit, viewer refused, room cap)
+    // are transient — the socket is fine — so they clear themselves rather
+    // than sitting next to a Reconnect button until the next reconnect.
+    const serverErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+        null
+    );
     const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
     const selectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
         null
@@ -443,6 +450,15 @@ export const useWhiteboardStore = (slug: string) => {
                     }
                     case "error": {
                         setWsError(parsed.message);
+                        if (serverErrorTimerRef.current) {
+                            clearTimeout(serverErrorTimerRef.current);
+                        }
+                        serverErrorTimerRef.current = setTimeout(() => {
+                            serverErrorTimerRef.current = null;
+                            setWsError((current) =>
+                                current === parsed.message ? null : current
+                            );
+                        }, SERVER_ERROR_TOAST_MS);
                         break;
                     }
                     default:
@@ -569,6 +585,10 @@ export const useWhiteboardStore = (slug: string) => {
             if (selectionTimerRef.current) {
                 clearTimeout(selectionTimerRef.current);
                 selectionTimerRef.current = null;
+            }
+            if (serverErrorTimerRef.current) {
+                clearTimeout(serverErrorTimerRef.current);
+                serverErrorTimerRef.current = null;
             }
             pendingCursorRef.current = null;
             pendingSelectionRef.current = null;

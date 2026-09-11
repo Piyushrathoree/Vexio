@@ -2803,7 +2803,7 @@ function WhiteboardCanvas({
             </header>
             {wsError && (
                 <div
-                    className="glass absolute left-1/2 top-14 z-30 flex w-[calc(100vw-1.5rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--color-coral)]/35 px-3 py-2 text-xs text-[var(--color-coral)]"
+                    className="glass absolute bottom-14 right-3 z-30 flex w-[calc(100vw-1.5rem)] max-w-md items-center gap-3 rounded-xl border border-[var(--color-coral)]/35 px-3 py-2 text-xs text-[var(--color-coral)]"
                     role="alert"
                 >
                     <span className="min-w-0 flex-1 text-left">{wsError}</span>

@@ -36,6 +36,9 @@ function GoogleIcon() {
     );
 }
 
+const UNREACHABLE_MESSAGE =
+    "Couldn't reach the server. Check that the API is running and that you're opening the app on the same host it expects.";
+
 export default function LoginPage() {
     const router = useRouter();
     const [email, setEmail] = useState("");
@@ -59,31 +62,45 @@ export default function LoginPage() {
         setLoading(true);
         setError("");
 
-        const { error: signInError } = await signIn.email({
-            email,
-            password,
-        });
+        try {
+            const { error: signInError } = await signIn.email({
+                email,
+                password,
+            });
 
-        setLoading(false);
+            if (signInError) {
+                const msg = signInError.message || "Sign in failed";
+                setError(
+                    msg.toLowerCase().includes("verify")
+                        ? "Verify your email first — check your inbox for the link."
+                        : msg
+                );
+                return;
+            }
 
-        if (signInError) {
-            const msg = signInError.message ?? "Sign in failed";
-            setError(
-                msg.toLowerCase().includes("verify")
-                    ? "Verify your email first — check your inbox for the link."
-                    : msg
-            );
-            return;
+            router.push(getRedirectTarget());
+        } catch {
+            // The auth client throws (rather than returning `error`) when the
+            // request never gets a response — server down, wrong
+            // NEXT_PUBLIC_AUTH_URL, or a CORS rejection because the page is
+            // open on an origin other than WEB_URL. Without this the button
+            // sat on "Signing in…" forever with nothing to explain why.
+            setError(UNREACHABLE_MESSAGE);
+        } finally {
+            setLoading(false);
         }
-
-        router.push(getRedirectTarget());
     };
 
     const handleSocial = async (provider: "google" | "github") => {
-        await signIn.social({
-            provider,
-            callbackURL: `${window.location.origin}${getRedirectTarget()}`,
-        });
+        setError("");
+        try {
+            await signIn.social({
+                provider,
+                callbackURL: `${window.location.origin}${getRedirectTarget()}`,
+            });
+        } catch {
+            setError(UNREACHABLE_MESSAGE);
+        }
     };
 
     return (

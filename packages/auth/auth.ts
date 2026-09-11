@@ -69,7 +69,15 @@ export const auth = betterAuth({
         // working in the target environment — otherwise users can't verify
         // their email and real-time will break.
         requireEmailVerification: false,
-        autoSignIn: false,
+        // Sign-up creates the session straight away (cookie + `set-auth-token`)
+        // so the client can land on /rooms. This also decides what a duplicate
+        // email gets back: with `autoSignIn: false` (or verification required)
+        // better-auth answers sign-up for an existing email with a *generic
+        // 200 and a synthetic user* to avoid account enumeration — the UI
+        // then says "account created" when nothing happened and the password
+        // just typed doesn't work. With it on, duplicates get a real 422
+        // `USER_ALREADY_EXISTS` the form can show.
+        autoSignIn: true,
         sendResetPassword: async ({ user, url }) => {
             try {
                 const { subject, html, text } = passwordResetEmailTemplate(url);

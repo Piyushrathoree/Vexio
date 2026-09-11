@@ -1,0 +1,11 @@
+# Invoke with:
+# gcloud builds submit --config cloudbuild.ws.yaml --substitutions=_IMAGE=REGION-docker.pkg.dev/PROJECT/REPOSITORY/orin-ws:TAG .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "--target", "ws", "--tag", "${_IMAGE}", "."]
+
+images:
+  - "${_IMAGE}"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

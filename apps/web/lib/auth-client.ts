@@ -34,11 +34,23 @@ export const authClient = createAuthClient({
 export const {
     signIn,
     signUp,
-    signOut,
     requestPasswordReset,
     resetPassword,
     sendVerificationEmail,
 } = authClient;
+
+// Signing out revokes the session server-side and clears the cookie, but the
+// bearer token in localStorage would otherwise outlive it. A revoked token
+// that's still validly signed is worse than no token: sent alongside a fresh
+// cookie (e.g. after a later Google sign-in) it makes `get-session` come back
+// null. Drop it whether or not the request succeeded.
+export const signOut: typeof authClient.signOut = async (...args) => {
+    try {
+        return await authClient.signOut(...args);
+    } finally {
+        clearBearerToken();
+    }
+};
 
 // Annotate explicitly against the local `authClient` value. Destructuring
 // `useSession` lets TS infer a type that points into better-auth's internal

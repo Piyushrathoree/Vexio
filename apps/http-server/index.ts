@@ -24,6 +24,33 @@ app.use(
 
 app.use(morgan("dev"));
 
+// When a browser sends both its session cookie and a bearer token, the cookie
+// wins. better-auth's bearer plugin otherwise *replaces* the cookie with the
+// bearer token before looking the session up — and the web client keeps its
+// token in localStorage, which goes stale whenever the cookie is set by a
+// top-level redirect the client-side JS never sees (Google OAuth callback,
+// the verify-email link). A stale-but-validly-signed bearer then makes
+// `get-session` return null AND clear the perfectly good cookie, bouncing a
+// freshly signed-in user straight back to /login. Non-browser callers with no
+// cookie keep working off the bearer token exactly as before.
+const SESSION_COOKIE_NAMES = [
+    "__Secure-better-auth.session_token",
+    "better-auth.session_token",
+];
+
+app.use((req: Request, _res: Response, next) => {
+    const hasSessionCookie = (req.headers.cookie ?? "")
+        .split(";")
+        .some((pair) => {
+            const [name, value] = pair.trim().split("=");
+            return SESSION_COOKIE_NAMES.includes(name ?? "") && Boolean(value);
+        });
+    if (hasSessionCookie && req.headers.authorization) {
+        delete req.headers.authorization;
+    }
+    next();
+});
+
 // Better Auth must be mounted before express.json()
 app.all("/api/auth/*splat", toNodeHandler(auth));
 

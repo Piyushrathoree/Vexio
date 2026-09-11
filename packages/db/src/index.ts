@@ -8,10 +8,15 @@ declare global {
 }
 
 const getConnectionString = () => {
-    // Prefer DIRECT_URL (stable, non-pooled) since that's what the app is
-    // documented to use; DATABASE_URL is reserved for a pooler and only
-    // used as a fallback when DIRECT_URL isn't set.
-    const url = (process.env.DIRECT_URL ?? process.env.DATABASE_URL)!;
+    // Neon’s pooled endpoint is the right runtime connection for Cloud Run
+    // services. DIRECT_URL is retained as a local-development fallback and
+    // remains the connection Prisma uses for migrations in prisma.config.ts.
+    const url = process.env.DATABASE_URL ?? process.env.DIRECT_URL;
+    if (!url) {
+        throw new Error(
+            "DATABASE_URL is required at runtime (DIRECT_URL is supported as a fallback)"
+        );
+    }
     const params = new URLSearchParams(
         url.includes("?") ? url.split("?")[1] : ""
     );
