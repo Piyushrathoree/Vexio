@@ -21,7 +21,15 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "test": "bun test",
     "test:unit": "bun test tests/unit",
-    "test:integration": "bun test tests/integration"
+    "test:integration": "bun test tests/integration",
+    "setup": "bun install && bun run db:generate",
+    "db:generate": "bun run --cwd packages/db generate",
+    "db:migrate": "bun run --cwd packages/db migrate",
+    "db:deploy": "bun run --cwd packages/db db:deploy",
+    "docker:up": "docker compose up --build",
+    "docker:up:detached": "docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
   "workspaces": [
     "apps/*",
