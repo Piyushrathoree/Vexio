@@ -41,12 +41,31 @@ Per-app dev ports (hardcoded in each app, not just env defaults):
 - `apps/http-server` → `bun --hot index.ts`, listens on `PORT` (default 8000)
 - `apps/ws-server` → `bun --hot index.ts`, listens on `WS_PORT` (default 8080)
 
+### Docker (whole stack, one command)
+
+```
+bun run docker:up           # docker compose up --build  (web :3001, api :8000, ws :8080)
+bun run docker:up:detached  # same, in the background
+bun run docker:logs         # follow logs
+bun run docker:down         # stop + remove containers
+```
+
+`docker-compose.yml` reads the root `.env`. A one-shot `migrate` service runs
+`prisma migrate deploy` first; `api`/`ws` start after it succeeds and `web` waits
+for `api` to be healthy. The DB stays on Neon (`@prisma/adapter-neon` needs Neon's
+protocol, so a local Postgres container is not a drop-in). Containers run with
+`NODE_ENV=production`, so `BETTER_AUTH_SECRET` **must** be set in `.env` — empty
+works in `bun run dev` but better-auth hard-fails on it in production.
+`NEXT_PUBLIC_*` are baked into the web image at build time (compose passes them
+as build args from `.env`). Host ports are overridable: `WEB_HOST_PORT`,
+`API_HOST_PORT`, `WS_HOST_PORT`. `Dockerfile` targets: `api`, `ws`, `web`
+(Cloud Build uses `api`/`ws` by name).
+
 ### Database (packages/db, Prisma 7 + @prisma/adapter-neon)
 
-There is **no `db:generate` / `db:push` script** anywhere despite `turbo.json` declaring task
-shapes for them — those turbo tasks are currently dead (no package implements a script with that
-exact name), so `turbo run db:generate` is a no-op. Use the real scripts directly, from
-`packages/db` (or `bunx turbo run <script> --filter=@repo/db`):
+Root scripts `bun run db:generate` / `db:migrate` / `db:deploy` forward to `packages/db`
+(`turbo.json` still declares `db:generate`/`db:push` task shapes that no workspace implements,
+so `turbo run db:generate` remains a no-op). The underlying scripts, from `packages/db`:
 
 ```
 bun run generate     # bunx prisma generate
