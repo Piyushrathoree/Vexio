@@ -3,6 +3,7 @@ services:
   migrate:
     build:
       context: .
+      network: host
       target: application
     env_file: .env
     command: ["bun", "run", "--cwd", "packages/db", "db:deploy"]
@@ -11,6 +12,7 @@ services:
   api:
     build:
       context: .
+      network: host
       target: api
     env_file: .env
     environment:
@@ -31,6 +33,7 @@ services:
   ws:
     build:
       context: .
+      network: host
       target: ws
     env_file: .env
     environment:
@@ -45,6 +48,7 @@ services:
   web:
     build:
       context: .
+      network: host
       target: web
       args:
         # Browser-facing URLs (the browser talks to the published host ports).
