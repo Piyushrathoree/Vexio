@@ -3,12 +3,8 @@
 import { createAuthClient } from "better-auth/react";
 import { clearSessionMarker, setSessionMarker } from "./session-marker";
 
-// Same-origin: `/api/auth/*` is proxied to the Express API by the rewrites in
-// next.config.ts, so cookies stay first-party. NEXT_PUBLIC_AUTH_URL still
-// overrides it for anyone pointing the app straight at a remote API.
 const authBaseUrl =
-    process.env.NEXT_PUBLIC_AUTH_URL?.trim() ||
-    (typeof window !== "undefined" ? window.location.origin : "");
+    process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8000";
 
 export const authClient = createAuthClient({
     baseURL: authBaseUrl,
