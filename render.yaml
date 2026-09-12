@@ -28,12 +28,13 @@ services:
         sync: false
       - key: BETTER_AUTH_SECRET
         generateValue: true
-      # This service's own public URL, e.g. https://vexio-api.onrender.com
+      # This service's own public URL.
       - key: BETTER_AUTH_URL
-        sync: false
-      # The Vercel URL, e.g. https://vexio.vercel.app (CORS + trusted origin)
+        value: https://vexio-api-9a66.onrender.com
+      # Browser origins allowed by CORS and better-auth trustedOrigins.
+      # Comma-separated; localhost dev ports are always allowed on top of this.
       - key: WEB_URL
-        sync: false
+        value: https://vexio-web-eta.vercel.app
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
