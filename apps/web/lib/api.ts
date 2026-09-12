@@ -1,7 +1,7 @@
 import { getBearerToken } from "./auth-client";
 
-const apiBaseUrl =
-    process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8000";
+// Same origin by default — see the rewrites in next.config.ts.
+const apiBaseUrl = process.env.NEXT_PUBLIC_AUTH_URL?.trim() ?? "";
 
 export const apiFetch = async (
     path: string,

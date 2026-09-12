@@ -7,10 +7,7 @@
   ],
   "build": {
     "env": {
-      "NEXT_PUBLIC_AUTH_URL": "https://vexio-api-9a66.onrender.com"
+      "API_ORIGIN": "https://vexio-api-9a66.onrender.com"
     }
-  },
-  "env": {
-    "NEXT_PUBLIC_AUTH_URL": "https://vexio-api-9a66.onrender.com"
   }
 }

@@ -17,20 +17,17 @@ services:
         value: 1.3.14
       - key: NODE_ENV
         value: production
-      # Web app and API on unrelated sites (vercel.app + onrender.com):
-      # session cookies must be SameSite=None. Drop this once both move to
-      # subdomains of one domain and COOKIE_DOMAIN is set instead.
-      - key: CROSS_SITE_AUTH
-        value: "true"
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
         sync: false
       - key: BETTER_AUTH_SECRET
         generateValue: true
-      # This service's own public URL.
+      # The origin the BROWSER uses for auth. The web app proxies /api/auth/*
+      # to this service (see apps/web/next.config.ts), so better-auth must
+      # build its callback URLs against the web origin, not this one.
       - key: BETTER_AUTH_URL
-        value: https://vexio-api-9a66.onrender.com
+        value: https://vexio-web-eta.vercel.app
       # Browser origins allowed by CORS and better-auth trustedOrigins.
       # Comma-separated; localhost dev ports are always allowed on top of this.
       - key: WEB_URL
