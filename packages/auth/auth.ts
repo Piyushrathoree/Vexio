@@ -1,12 +1,11 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { bearer } from "better-auth/plugins";
-import "@repo/common";
+import { getAllowedOrigins } from "@repo/common";
 import { client } from "@repo/db";
 import { sendEmail } from "./email";
 import { passwordResetEmailTemplate, verificationEmailTemplate } from "./email-templates";
 
-const webUrl = process.env.WEB_URL ?? "http://localhost:3001";
 
 const socialProviders: Record<string, { clientId: string; clientSecret: string }> =
     {};
@@ -31,7 +30,7 @@ export const auth = betterAuth({
     }),
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.BETTER_AUTH_URL,
-    trustedOrigins: [webUrl],
+    trustedOrigins: getAllowedOrigins(),
     advanced: {
         // In production the web app and auth API live on different subdomains
         // of a shared parent domain, so session cookies must be scoped to the

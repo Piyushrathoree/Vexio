@@ -3,17 +3,17 @@ import cors from "cors";
 import morgan from "morgan";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "@repo/auth";
-import { ApiError } from "@repo/common";
+import { ApiError, getAllowedOrigins } from "@repo/common";
 import { router } from "./routes/route";
 import type {Request , Response } from 'express'
 
 const app = express();
 const port = process.env.PORT ?? "8000";
-const webUrl = process.env.WEB_URL ?? "http://localhost:3001";
+const allowedOrigins = getAllowedOrigins();
 
 app.use(
     cors({
-        origin: webUrl,
+        origin: allowedOrigins,
         // PATCH is required by the room-rename and member-role routes; without
         // it the browser's preflight fails and both silently break.
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
