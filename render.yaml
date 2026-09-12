@@ -9,7 +9,7 @@ services:
     # db:deploy = prisma migrate deploy + prisma generate (needs DIRECT_URL).
     # Always go through the workspace's pinned Prisma — never `bunx prisma`,
     # which resolves the latest major and breaks the CLI surface.
-    buildCommand: bun install --frozen-lockfile && bun run db:deploy
+    buildCommand: bun install && bun run db:deploy
     startCommand: bun apps/http-server/index.ts
     healthCheckPath: /
     envVars:
