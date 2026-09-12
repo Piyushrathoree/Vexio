@@ -17,12 +17,15 @@ config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../.env") })
 // requests make the session and state cookies first-party, which works in
 // every browser without a shared parent domain.
 //
-// Read at build time (rewrites are baked into the routes manifest), so it
-// must be set as a build env var on the host — see apps/web/vercel.json.
-const apiOrigin = (process.env.API_ORIGIN ?? "http://localhost:8000").replace(
-    /\/+$/,
-    ""
-);
+// Read at BUILD time — rewrites are baked into the routes manifest — so an
+// API_ORIGIN that only exists at runtime is too late. The deployed API is the
+// default rather than localhost: a missing build var used to silently produce
+// a build that proxied to 127.0.0.1, which Vercel rejects with
+// DNS_HOSTNAME_RESOLVED_PRIVATE and looks exactly like a 404. Local dev sets
+// API_ORIGIN in the root .env, loaded just above.
+const apiOrigin = (
+    process.env.API_ORIGIN?.trim() || "https://vexio-api-9a66.onrender.com"
+).replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
     async rewrites() {
