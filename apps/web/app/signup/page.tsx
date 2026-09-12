@@ -12,6 +12,10 @@ import {
     authLabel,
     authSubmit,
 } from "../../components/AuthSplit";
+import {
+    SocialAuthButtons,
+    SocialAuthDivider,
+} from "../../components/SocialAuthButtons";
 
 export default function SignupPage() {
     const router = useRouter();
@@ -148,6 +152,10 @@ export default function SignupPage() {
                         {loading ? "Creating account…" : "Create Account"}
                     </button>
                 </form>
+
+                <SocialAuthDivider />
+
+                <SocialAuthButtons onError={setError} />
 
                 <p className="mt-6 text-center text-sm text-[#7a7770]">
                     Already have an account?{" "}
